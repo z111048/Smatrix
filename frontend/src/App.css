@@ -31,6 +31,13 @@
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
+  
+  /* Layout */
+  --max-app-width: 1600px;
+  --sidebar-width: 360px;
+  --sidebar-width-tablet: 300px;
+  --header-height: 56px;
+  --toolbar-height: 52px;
 }
 
 * {
@@ -50,31 +57,54 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  max-width: var(--max-app-width);
+  margin: 0 auto;
+  background: var(--color-bg-primary);
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.1);
+}
+
+@media (min-width: 1601px) {
+  body {
+    background: var(--color-bg-tertiary);
+  }
 }
 
 /* Header */
 .header {
   background: linear-gradient(135deg, #1e3a8a, #2563eb);
   color: white;
-  padding: var(--spacing-md) var(--spacing-xl);
+  padding: 0 var(--spacing-xl);
   box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+  display: flex;
+  align-items: center;
+  height: var(--header-height);
+  gap: var(--spacing-md);
 }
 
 .header h1 {
   font-size: 1.5rem;
   font-weight: 600;
   letter-spacing: -0.025em;
+  margin: 0;
+}
+
+.header-subtitle {
+  font-size: 0.9rem;
+  font-weight: 400;
+  opacity: 0.85;
 }
 
 /* Toolbar */
 .toolbar {
   display: flex;
   gap: var(--spacing-md);
-  padding: 0.75rem var(--spacing-md);
+  padding: 0.75rem var(--spacing-xl);
   background: var(--color-bg-primary);
   border-bottom: 1px solid var(--color-border-light);
-  justify-content: space-between;
+  justify-content: flex-start;
+  align-items: center;
   flex-wrap: wrap;
+  min-height: var(--toolbar-height);
 }
 
 .tool-group {
@@ -134,28 +164,41 @@ body {
 .main-content {
   display: flex;
   flex: 1;
-  padding: var(--spacing-md);
-  gap: var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-xl);
+  gap: var(--spacing-lg);
+  min-height: 0;
 }
 
 .canvas-container {
   flex: 1;
+  min-width: 0;
   background: var(--color-bg-primary);
   border-radius: var(--radius-lg);
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   overflow: hidden;
   position: relative;
-  min-height: 400px;
+  min-height: 500px;
+  border: 1px solid var(--color-border-light);
 }
 
 /* Right Panel */
 .right-panel {
-  width: 340px;
+  width: var(--sidebar-width);
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
-  max-height: calc(100vh - 140px);
+  max-height: calc(100vh - var(--header-height) - var(--toolbar-height) - var(--spacing-xl));
   overflow-y: auto;
+  position: relative;
+  transition: width 0.2s ease, opacity 0.2s ease;
+}
+
+.right-panel.closed {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  opacity: 0;
 }
 
 /* Sidebar */
@@ -476,14 +519,6 @@ body {
 
 /* Responsive Design */
 
-/* Header subtitle */
-.header-subtitle {
-  margin-left: var(--spacing-sm);
-  font-size: 0.9rem;
-  font-weight: 400;
-  opacity: 0.85;
-}
-
 /* Sidebar toggle buttons */
 .sidebar-toggle {
   display: none;
@@ -503,21 +538,21 @@ body {
 
 .sidebar-collapse {
   position: absolute;
-  left: -20px;
-  top: 50%;
-  transform: translateY(-50%);
+  left: -12px;
+  top: 20px;
   width: 24px;
-  height: 48px;
+  height: 24px;
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  border-radius: 50%;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 0.875rem;
   color: var(--color-text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .sidebar-collapse:hover {
@@ -525,37 +560,40 @@ body {
   color: var(--color-text-primary);
 }
 
-.right-panel {
-  position: relative;
-  transition: width 0.2s ease, opacity 0.2s ease;
-}
-
-.right-panel.closed {
-  width: 24px;
-  min-width: 24px;
-}
-
 .mobile-only {
-  display: none;
+  display: none !important;
 }
 
 .desktop-only {
   display: flex;
 }
 
+/* Tablet: 768px - 1199px */
 @media (max-width: 1199px) {
+  .main-content {
+    padding: var(--spacing-md);
+    gap: var(--spacing-md);
+  }
+  
   .right-panel {
-    width: 300px;
+    width: var(--sidebar-width-tablet);
   }
   
   .right-panel.closed {
-    width: 24px;
+    width: 0;
   }
 }
 
+/* Small tablet / Large phone: < 992px */
 @media (max-width: 991px) {
   .main-content {
     flex-direction: column;
+    padding: var(--spacing-sm);
+  }
+  
+  .canvas-container {
+    min-height: 400px;
+    flex: none;
   }
   
   .right-panel {
@@ -563,6 +601,7 @@ body {
     max-height: none;
     flex-direction: row;
     flex-wrap: wrap;
+    gap: var(--spacing-sm);
   }
   
   .right-panel.closed {
@@ -571,28 +610,32 @@ body {
   
   .sidebar,
   .analysis-panel {
-    flex: 1;
+    flex: 1 1 300px;
     min-width: 280px;
   }
   
   .desktop-only {
-    display: none;
+    display: none !important;
   }
   
   .mobile-only {
-    display: flex;
+    display: flex !important;
   }
   
   .sidebar-toggle {
     display: block;
   }
+  
+  .sidebar-collapse {
+    display: none;
+  }
 }
 
+/* Phone: < 768px */
 @media (max-width: 767px) {
   .header {
-    padding: var(--spacing-sm) var(--spacing-md);
-    display: flex;
-    align-items: center;
+    padding: 0 var(--spacing-md);
+    height: 48px;
   }
   
   .header h1 {
@@ -604,19 +647,22 @@ body {
   }
   
   .toolbar {
-    padding: var(--spacing-sm);
-    gap: var(--spacing-xs);
+    padding: var(--spacing-sm) var(--spacing-md);
+    gap: var(--spacing-sm);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    min-height: 44px;
   }
   
   .tool-group {
     flex-wrap: nowrap;
+    flex-shrink: 0;
   }
   
   .tool-btn {
-    padding: var(--spacing-xs) var(--spacing-sm);
-    font-size: 0.75rem;
+    padding: var(--spacing-sm);
+    font-size: 0.875rem;
     white-space: nowrap;
   }
   
@@ -631,18 +677,21 @@ body {
   
   .canvas-container {
     min-height: 300px;
+    border-radius: var(--radius-md);
   }
   
   .right-panel {
     flex-direction: column;
+    gap: var(--spacing-xs);
   }
   
   .sidebar,
   .analysis-panel {
     min-width: 100%;
+    flex: none;
   }
   
-  /* Touch-friendly buttons */
+  /* Touch-friendly inputs */
   .analyze-btn {
     padding: 1rem;
     font-size: 1.1rem;
@@ -660,13 +709,14 @@ body {
   }
 }
 
+/* Small phone: < 480px */
 @media (max-width: 480px) {
   .header h1 {
     font-size: 1rem;
   }
   
   .tool-btn {
-    padding: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
   }
   
   .tool-btn .icon {
