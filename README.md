@@ -28,6 +28,11 @@
   - 變形曲線 (Hermite 插值)
 - 🔧 **多種支承類型**：鉸支 (Pin)、滾支 (Roller)、固定端 (Fixed)
 - ⚡ **多種載重類型**：節點集中力、節點彎矩、均佈載重 (UDL)
+- 🔩 **2D 剛架/桁架分析** (v0.2.0 新增)：
+  - 完整 6-DOF 元素（軸力 + 彎曲）
+  - 斜向桿件座標轉換
+  - 端部鉸接釋放（桁架行為）
+  - 21 項自動化測試驗證
 
 ### 快速開始
 
@@ -90,11 +95,15 @@ npm run dev
 
 本系統採用 **直接勁度法 (Direct Stiffness Method)** 進行結構分析：
 
-1. **元素勁度矩陣**：4x4 彎曲勁度矩陣 (2 DOF/node: v, θ)
-2. **全域組裝**：依據節點編號組裝全域勁度矩陣
-3. **邊界條件**：大數法 (Penalty Method) 處理支承約束
-4. **求解**：NumPy 線性代數求解 Kd = F
-5. **後處理**：回代計算內力、繪製 SFD/BMD
+1. **元素勁度矩陣**：
+   - 基本梁：4x4 彎曲勁度矩陣 (2 DOF/node: v, θ)
+   - 剛架/桁架：6x6 完整勁度矩陣 (3 DOF/node: u, v, θ)
+2. **座標轉換**：斜向桿件使用轉換矩陣 T 轉換至全域座標
+3. **全域組裝**：依據節點編號組裝全域勁度矩陣
+4. **邊界條件**：大數法 (Penalty Method) 處理支承約束
+5. **端部釋放**：凝聚法處理鉸接端點（桁架行為）
+6. **求解**：NumPy 線性代數求解 Kd = F
+7. **後處理**：回代計算內力、繪製 SFD/BMD
 
 ---
 
@@ -111,6 +120,11 @@ npm run dev
   - Deflection curve (Hermite interpolation)
 - 🔧 **Support Types**: Pin, Roller, Fixed
 - ⚡ **Load Types**: Point loads, Moments, UDL
+- 🔩 **2D Frame/Truss Analysis** (v0.2.0):
+  - Full 6-DOF elements (axial + bending)
+  - Inclined member coordinate transformation
+  - Moment releases for truss behavior
+  - 21 automated test cases
 
 ### Quick Start
 
