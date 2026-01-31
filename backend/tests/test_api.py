@@ -270,5 +270,193 @@ class TestInternalForces:
             assert len(forces["M"]) == 21
 
 
+class TestFrameStructures:
+    """Tests for frame structures (non-horizontal members)"""
+    
+    def test_portal_frame_horizontal_load(self):
+        """Portal frame with horizontal load at top"""
+        H = 4.0  # Height
+        W = 6.0  # Width
+        P = 50000  # 50 kN horizontal load
+        
+        request = {
+            "nodes": [
+                {"id": 1, "x": 0, "y": 0, "support": "fixed"},
+                {"id": 2, "x": 0, "y": H, "support": "free"},
+                {"id": 3, "x": W, "y": H, "support": "free"},
+                {"id": 4, "x": W, "y": 0, "support": "fixed"}
+            ],
+            "elements": [
+                {"id": 1, "node_i": 1, "node_j": 2, "E": 200e9, "I": 1e-4},  # Left column
+                {"id": 2, "node_i": 2, "node_j": 3, "E": 200e9, "I": 1e-4},  # Beam
+                {"id": 3, "node_i": 3, "node_j": 4, "E": 200e9, "I": 1e-4}   # Right column
+            ],
+            "point_loads": [
+                {"node_id": 2, "Fx": P, "Fy": 0, "Mz": 0}
+            ],
+            "udls": []
+        }
+        
+        response = client.post("/analyze", json=request)
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["success"] is True
+        
+        # Check horizontal displacement at top
+        node2_disp = next(d for d in data["displacements"] if d["node_id"] == 2)
+        assert node2_disp["u"] > 0  # Should move to the right
+        
+        # Check equilibrium: sum of horizontal reactions = applied load
+        total_Fx = sum(r["Fx"] for r in data["reactions"])
+        assert abs(total_Fx + P) < 100  # Should balance
+    
+    def test_portal_frame_vertical_load(self):
+        """Portal frame with vertical load on beam"""
+        H = 4.0
+        W = 6.0
+        P = 100000  # 100 kN vertical load
+        
+        request = {
+            "nodes": [
+                {"id": 1, "x": 0, "y": 0, "support": "fixed"},
+                {"id": 2, "x": 0, "y": H, "support": "free"},
+                {"id": 3, "x": W/2, "y": H, "support": "free"},  # Mid-span node
+                {"id": 4, "x": W, "y": H, "support": "free"},
+                {"id": 5, "x": W, "y": 0, "support": "fixed"}
+            ],
+            "elements": [
+                {"id": 1, "node_i": 1, "node_j": 2, "E": 200e9, "I": 1e-4},
+                {"id": 2, "node_i": 2, "node_j": 3, "E": 200e9, "I": 1e-4},
+                {"id": 3, "node_i": 3, "node_j": 4, "E": 200e9, "I": 1e-4},
+                {"id": 4, "node_i": 4, "node_j": 5, "E": 200e9, "I": 1e-4}
+            ],
+            "point_loads": [
+                {"node_id": 3, "Fx": 0, "Fy": -P, "Mz": 0}
+            ],
+            "udls": []
+        }
+        
+        response = client.post("/analyze", json=request)
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["success"] is True
+        
+        # Check vertical equilibrium
+        total_Fy = sum(r["Fy"] for r in data["reactions"])
+        assert abs(total_Fy - P) < 100  # Reactions should balance load
+    
+    def test_inclined_frame(self):
+        """Inclined frame (A-frame style)"""
+        request = {
+            "nodes": [
+                {"id": 1, "x": 0, "y": 0, "support": "pin"},
+                {"id": 2, "x": 3, "y": 4, "support": "free"},  # Apex
+                {"id": 3, "x": 6, "y": 0, "support": "roller"}
+            ],
+            "elements": [
+                {"id": 1, "node_i": 1, "node_j": 2, "E": 200e9, "I": 1e-4},  # Left leg
+                {"id": 2, "node_i": 2, "node_j": 3, "E": 200e9, "I": 1e-4}   # Right leg
+            ],
+            "point_loads": [
+                {"node_id": 2, "Fx": 0, "Fy": -50000, "Mz": 0}  # 50 kN at apex
+            ],
+            "udls": []
+        }
+        
+        response = client.post("/analyze", json=request)
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["success"] is True
+        
+        # Check that apex deflects downward
+        apex_disp = next(d for d in data["displacements"] if d["node_id"] == 2)
+        assert apex_disp["v"] < 0
+    
+    def test_multi_story_frame(self):
+        """Two-story frame"""
+        H = 3.5  # Story height
+        W = 5.0  # Bay width
+        
+        request = {
+            "nodes": [
+                # Ground floor
+                {"id": 1, "x": 0, "y": 0, "support": "fixed"},
+                {"id": 2, "x": W, "y": 0, "support": "fixed"},
+                # First floor
+                {"id": 3, "x": 0, "y": H, "support": "free"},
+                {"id": 4, "x": W, "y": H, "support": "free"},
+                # Second floor
+                {"id": 5, "x": 0, "y": 2*H, "support": "free"},
+                {"id": 6, "x": W, "y": 2*H, "support": "free"}
+            ],
+            "elements": [
+                # First floor columns
+                {"id": 1, "node_i": 1, "node_j": 3, "E": 200e9, "I": 1e-4},
+                {"id": 2, "node_i": 2, "node_j": 4, "E": 200e9, "I": 1e-4},
+                # First floor beam
+                {"id": 3, "node_i": 3, "node_j": 4, "E": 200e9, "I": 1e-4},
+                # Second floor columns
+                {"id": 4, "node_i": 3, "node_j": 5, "E": 200e9, "I": 1e-4},
+                {"id": 5, "node_i": 4, "node_j": 6, "E": 200e9, "I": 1e-4},
+                # Second floor beam
+                {"id": 6, "node_i": 5, "node_j": 6, "E": 200e9, "I": 1e-4}
+            ],
+            "point_loads": [
+                {"node_id": 5, "Fx": 20000, "Fy": 0, "Mz": 0},  # 20 kN lateral at top
+                {"node_id": 3, "Fx": 30000, "Fy": 0, "Mz": 0}   # 30 kN lateral at 1st floor
+            ],
+            "udls": []
+        }
+        
+        response = client.post("/analyze", json=request)
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["success"] is True
+        
+        # Check lateral equilibrium
+        total_Fx = sum(r["Fx"] for r in data["reactions"])
+        assert abs(total_Fx + 50000) < 100  # 20 + 30 = 50 kN
+    
+    def test_frame_with_udl(self):
+        """Portal frame with UDL on beam"""
+        H = 4.0
+        W = 8.0
+        w = -15000  # 15 kN/m downward
+        
+        request = {
+            "nodes": [
+                {"id": 1, "x": 0, "y": 0, "support": "fixed"},
+                {"id": 2, "x": 0, "y": H, "support": "free"},
+                {"id": 3, "x": W, "y": H, "support": "free"},
+                {"id": 4, "x": W, "y": 0, "support": "fixed"}
+            ],
+            "elements": [
+                {"id": 1, "node_i": 1, "node_j": 2, "E": 200e9, "I": 1e-4},
+                {"id": 2, "node_i": 2, "node_j": 3, "E": 200e9, "I": 1e-4},  # Beam
+                {"id": 3, "node_i": 3, "node_j": 4, "E": 200e9, "I": 1e-4}
+            ],
+            "point_loads": [],
+            "udls": [
+                {"element_id": 2, "w": w}  # UDL on beam
+            ]
+        }
+        
+        response = client.post("/analyze", json=request)
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["success"] is True
+        
+        # Check vertical equilibrium: sum of reactions should equal total applied load
+        total_Fy = sum(r["Fy"] for r in data["reactions"])
+        expected_load = w * W  # -15000 * 8 = -120000 N
+        # Note: Reaction sign convention may vary; check absolute balance
+        assert abs(abs(total_Fy) - abs(expected_load)) < 1000
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

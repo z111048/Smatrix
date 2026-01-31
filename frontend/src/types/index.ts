@@ -1,6 +1,6 @@
 // Type definitions for Smatrix frontend
 
-export type SupportType = 'free' | 'roller' | 'pin' | 'fixed';
+export type SupportType = 'free' | 'roller' | 'roller_x' | 'roller_y' | 'pin' | 'fixed';
 
 export interface Node {
   id: number;
@@ -15,10 +15,12 @@ export interface Element {
   nodeJ: number;
   E: number;  // Young's modulus (Pa)
   I: number;  // Moment of inertia (m^4)
+  A?: number; // Cross-sectional area (m^2)
 }
 
 export interface PointLoad {
   nodeId: number;
+  Fx?: number; // Horizontal force (N), positive rightward
   Fy: number;  // Vertical force (N), positive upward
   Mz: number;  // Moment (N·m)
 }
@@ -30,12 +32,14 @@ export interface UDL {
 
 export interface NodeDisplacement {
   node_id: number;
+  u?: number;  // Horizontal displacement (m)
   v: number;   // Vertical displacement (m)
   theta: number;  // Rotation (rad)
 }
 
 export interface NodeReaction {
   node_id: number;
+  Fx?: number; // Horizontal reaction (N)
   Fy: number;  // Vertical reaction (N)
   Mz: number;  // Moment reaction (N·m)
 }

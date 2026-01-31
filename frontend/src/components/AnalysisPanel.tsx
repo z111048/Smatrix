@@ -13,6 +13,10 @@ const AnalysisPanel: React.FC = () => {
     setResult, setLoading, setError
   } = useStore();
 
+  // Count unsupported nodes
+  const freeNodes = nodes.filter(n => n.support === 'free');
+  const hasSupport = nodes.length > 0 && freeNodes.length < nodes.length;
+
   const handleAnalyze = async () => {
     if (nodes.length < 2) {
       setError('需要至少 2 個節點 / Need at least 2 nodes');
@@ -25,9 +29,9 @@ const AnalysisPanel: React.FC = () => {
     }
     
     // Check if at least one node has a support
-    const hasSupport = nodes.some(n => n.support !== 'free');
     if (!hasSupport) {
-      setError('需要至少 1 個支承 / Need at least 1 support (pin, roller, or fixed)');
+      const nodeIds = freeNodes.map(n => n.id).join(', ');
+      setError(`所有節點都沒有支承 (節點 ${nodeIds}) / All nodes are free. Set support for at least one node.`);
       return;
     }
 
@@ -42,7 +46,7 @@ const AnalysisPanel: React.FC = () => {
       const errorMessage = err instanceof Error ? err.message : 'Analysis failed';
       // Translate common error messages
       let displayError = errorMessage;
-      if (errorMessage.includes('singular')) {
+      if (errorMessage.includes('singular') || errorMessage.includes('unstable')) {
         displayError = '結構不穩定 / Structure is unstable (check supports and connections)';
       } else if (errorMessage.includes('Length must be positive')) {
         displayError = '桿件長度必須為正值 / Element length must be positive';
@@ -63,6 +67,22 @@ const AnalysisPanel: React.FC = () => {
 
   return (
     <div className="analysis-panel">
+      {/* Warning for unsupported nodes */}
+      {nodes.length > 0 && !hasSupport && (
+        <div className="warning-message">
+          ⚠️ 所有節點都沒有支承 / No supports defined
+          <br />
+          <small>選取節點並設定支承類型 / Select a node and set support type</small>
+        </div>
+      )}
+      
+      {/* Warning for free nodes */}
+      {hasSupport && freeNodes.length > 0 && freeNodes.length < nodes.length && (
+        <div className="info-message">
+          ℹ️ {freeNodes.length} 個自由節點 (橘色) / {freeNodes.length} free node(s) (orange)
+        </div>
+      )}
+
       <div className="analyze-section">
         <button
           className="analyze-btn"

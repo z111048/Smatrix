@@ -4,35 +4,6 @@ import React, { useCallback } from 'react';
 import { Stage, Layer, Line, Circle, Group, Text } from 'react-konva';
 import { useStore } from '../store';
 
-// Hermite cubic interpolation for smooth deflection curves
-function hermiteInterpolation(
-  x0: number, y0: number, m0: number,
-  x1: number, y1: number, m1: number,
-  numPoints: number = 20
-): number[][] {
-  const points: number[][] = [];
-  const h = x1 - x0;
-  
-  for (let i = 0; i <= numPoints; i++) {
-    const t = i / numPoints;
-    const t2 = t * t;
-    const t3 = t2 * t;
-    
-    // Hermite basis functions
-    const h00 = 2*t3 - 3*t2 + 1;
-    const h10 = t3 - 2*t2 + t;
-    const h01 = -2*t3 + 3*t2;
-    const h11 = t3 - t2;
-    
-    const x = x0 + t * h;
-    const y = h00*y0 + h10*h*m0 + h01*y1 + h11*h*m1;
-    
-    points.push([x, y]);
-  }
-  
-  return points;
-}
-
 const ResultsCanvas: React.FC = () => {
   const {
     nodes, elements, result, viewMode,
@@ -54,7 +25,7 @@ const ResultsCanvas: React.FC = () => {
   // Get displacement for a node
   const getDisplacement = (nodeId: number) => {
     const d = result.displacements.find(d => d.node_id === nodeId);
-    return d ? { v: d.v, theta: d.theta } : { v: 0, theta: 0 };
+    return d ? { u: d.u || 0, v: d.v, theta: d.theta } : { u: 0, v: 0, theta: 0 };
   };
 
   // Get internal forces for an element
@@ -66,6 +37,7 @@ const ResultsCanvas: React.FC = () => {
   const renderDeflection = () => {
     const deflectionScale = 50; // Amplification factor for visibility
     const curves: React.ReactElement[] = [];
+    const originalLines: React.ReactElement[] = [];
     
     elements.forEach(elem => {
       const nodeI = getNode(elem.nodeI);
@@ -75,18 +47,48 @@ const ResultsCanvas: React.FC = () => {
       const dispI = getDisplacement(elem.nodeI);
       const dispJ = getDisplacement(elem.nodeJ);
 
-      // Use Hermite interpolation for smooth curve
-      const interpolated = hermiteInterpolation(
-        nodeI.x, dispI.v * deflectionScale, dispI.theta * deflectionScale,
-        nodeJ.x, dispJ.v * deflectionScale, dispJ.theta * deflectionScale,
-        20
+      // Draw original structure as dashed line
+      const origI = toScreen(nodeI.x, nodeI.y);
+      const origJ = toScreen(nodeJ.x, nodeJ.y);
+      originalLines.push(
+        <Line
+          key={`orig-${elem.id}`}
+          points={[origI.x, origI.y, origJ.x, origJ.y]}
+          stroke="#9ca3af"
+          strokeWidth={2}
+          dash={[8, 4]}
+        />
       );
 
+      // Calculate element geometry
+      const dx = nodeJ.x - nodeI.x;
+      const dy = nodeJ.y - nodeI.y;
+      const L = Math.sqrt(dx * dx + dy * dy);
+      if (L === 0) return;
+
+      // For 2D deflection, we need to show both u and v displacements
+      // Use simplified linear interpolation for now (Hermite is for 1D bending)
+      const numPoints = 20;
       const points: number[] = [];
-      interpolated.forEach(([wx, wy]) => {
-        const screen = toScreen(wx, wy);
+      
+      for (let i = 0; i <= numPoints; i++) {
+        const t = i / numPoints;
+        
+        // Interpolate position along element
+        const baseX = nodeI.x + dx * t;
+        const baseY = nodeI.y + dy * t;
+        
+        // Interpolate displacements (linear for simplicity)
+        const u = dispI.u + (dispJ.u - dispI.u) * t;
+        const v = dispI.v + (dispJ.v - dispI.v) * t;
+        
+        // Apply deflection scale
+        const deflectedX = baseX + u * deflectionScale;
+        const deflectedY = baseY + v * deflectionScale;
+        
+        const screen = toScreen(deflectedX, deflectedY);
         points.push(screen.x, screen.y);
-      });
+      }
 
       curves.push(
         <Line
@@ -100,30 +102,12 @@ const ResultsCanvas: React.FC = () => {
       );
     });
 
-    // Draw original structure as dashed line
-    const originalLines = elements.map(elem => {
-      const nodeI = getNode(elem.nodeI);
-      const nodeJ = getNode(elem.nodeJ);
-      if (!nodeI || !nodeJ) return null;
-
-      const posI = toScreen(nodeI.x, 0);
-      const posJ = toScreen(nodeJ.x, 0);
-
-      return (
-        <Line
-          key={`orig-${elem.id}`}
-          points={[posI.x, posI.y, posJ.x, posJ.y]}
-          stroke="#9ca3af"
-          strokeWidth={2}
-          dash={[8, 4]}
-        />
-      );
-    });
-
     // Draw deflected nodes
     const deflectedNodes = nodes.map(node => {
       const disp = getDisplacement(node.id);
-      const pos = toScreen(node.x, disp.v * deflectionScale);
+      const deflectedX = node.x + disp.u * deflectionScale;
+      const deflectedY = node.y + disp.v * deflectionScale;
+      const pos = toScreen(deflectedX, deflectedY);
       
       return (
         <Group key={`node-defl-${node.id}`}>
@@ -138,7 +122,9 @@ const ResultsCanvas: React.FC = () => {
           <Text
             x={pos.x + 10}
             y={pos.y - 20}
-            text={`${(disp.v * 1000).toFixed(2)} mm`}
+            text={`δ=${Math.sqrt(disp.u**2 + disp.v**2) * 1000 > 0.01 
+              ? (Math.sqrt(disp.u**2 + disp.v**2) * 1000).toFixed(2) + ' mm' 
+              : '0 mm'}`}
             fill="#dc2626"
             fontSize={11}
           />
@@ -159,6 +145,7 @@ const ResultsCanvas: React.FC = () => {
   const renderSFD = () => {
     const forceScale = 0.003; // Scale for force visualization
     const diagrams: React.ReactElement[] = [];
+    const structureLines: React.ReactElement[] = [];
     
     elements.forEach(elem => {
       const nodeI = getNode(elem.nodeI);
@@ -168,23 +155,47 @@ const ResultsCanvas: React.FC = () => {
       const forces = getInternalForces(elem.id);
       if (!forces) return;
 
-      const baseY = offsetY;
+      // Draw the actual structure line as baseline
+      const startPos = toScreen(nodeI.x, nodeI.y);
+      const endPos = toScreen(nodeJ.x, nodeJ.y);
+      
+      structureLines.push(
+        <Line
+          key={`struct-${elem.id}`}
+          points={[startPos.x, startPos.y, endPos.x, endPos.y]}
+          stroke="#374151"
+          strokeWidth={3}
+        />
+      );
+
+      // Calculate element geometry
+      const dx = nodeJ.x - nodeI.x;
+      const dy = nodeJ.y - nodeI.y;
+      const L = Math.sqrt(dx * dx + dy * dy);
+      if (L === 0) return;
+      
+      // Unit normal vector (perpendicular to element, pointing "up" in local coords)
+      const nx = -dy / L;
+      const ny = dx / L;
+
       const points: number[] = [];
       
-      // Start from baseline at node I
-      const startPos = toScreen(nodeI.x, 0);
-      points.push(startPos.x, baseY);
+      // Start from node I on baseline
+      points.push(startPos.x, startPos.y);
 
-      // Add all force points
-      forces.x.forEach((x, i) => {
-        const screenX = offsetX + (nodeI.x + x) * scale;
-        const screenY = baseY - forces.V[i] * forceScale;
-        points.push(screenX, screenY);
+      // Add all force points offset perpendicular to element
+      forces.x.forEach((xLocal, i) => {
+        const ratio = xLocal / L;
+        const wx = nodeI.x + dx * ratio;
+        const wy = nodeI.y + dy * ratio;
+        // Offset by shear force in normal direction
+        const offset = forces.V[i] * forceScale;
+        const screenPos = toScreen(wx + nx * offset / scale, wy + ny * offset / scale);
+        points.push(screenPos.x, screenPos.y);
       });
 
-      // Close back to baseline
-      const endPos = toScreen(nodeJ.x, 0);
-      points.push(endPos.x, baseY);
+      // Close back to node J on baseline
+      points.push(endPos.x, endPos.y);
 
       diagrams.push(
         <Group key={`sfd-${elem.id}`}>
@@ -201,14 +212,18 @@ const ResultsCanvas: React.FC = () => {
       // Add value labels at key points
       const maxV = Math.max(...forces.V.map(Math.abs));
       const maxIdx = forces.V.findIndex(v => Math.abs(v) === maxV);
-      if (maxIdx >= 0) {
-        const labelX = offsetX + (nodeI.x + forces.x[maxIdx]) * scale;
-        const labelY = baseY - forces.V[maxIdx] * forceScale;
+      if (maxIdx >= 0 && maxV > 0) {
+        const ratio = forces.x[maxIdx] / L;
+        const wx = nodeI.x + dx * ratio;
+        const wy = nodeI.y + dy * ratio;
+        const offset = forces.V[maxIdx] * forceScale;
+        const labelPos = toScreen(wx + nx * offset / scale, wy + ny * offset / scale);
+        
         diagrams.push(
           <Text
             key={`sfd-label-${elem.id}`}
-            x={labelX + 5}
-            y={labelY - 15}
+            x={labelPos.x + 5}
+            y={labelPos.y - 15}
             text={`${(forces.V[maxIdx] / 1000).toFixed(1)} kN`}
             fill="#1d4ed8"
             fontSize={11}
@@ -218,19 +233,9 @@ const ResultsCanvas: React.FC = () => {
       }
     });
 
-    // Draw baseline
-    const baseline = (
-      <Line
-        key="sfd-baseline"
-        points={[offsetX, offsetY, offsetX + 1000, offsetY]}
-        stroke="#374151"
-        strokeWidth={2}
-      />
-    );
-
     return (
       <>
-        {baseline}
+        {structureLines}
         {diagrams}
       </>
     );
@@ -240,6 +245,7 @@ const ResultsCanvas: React.FC = () => {
   const renderBMD = () => {
     const momentScale = 0.0003; // Scale for moment visualization
     const diagrams: React.ReactElement[] = [];
+    const structureLines: React.ReactElement[] = [];
     
     elements.forEach(elem => {
       const nodeI = getNode(elem.nodeI);
@@ -249,23 +255,49 @@ const ResultsCanvas: React.FC = () => {
       const forces = getInternalForces(elem.id);
       if (!forces) return;
 
-      const baseY = offsetY;
+      // Draw the actual structure line as baseline
+      const startPos = toScreen(nodeI.x, nodeI.y);
+      const endPos = toScreen(nodeJ.x, nodeJ.y);
+      
+      structureLines.push(
+        <Line
+          key={`struct-${elem.id}`}
+          points={[startPos.x, startPos.y, endPos.x, endPos.y]}
+          stroke="#374151"
+          strokeWidth={3}
+        />
+      );
+
+      // Calculate element geometry
+      const dx = nodeJ.x - nodeI.x;
+      const dy = nodeJ.y - nodeI.y;
+      const L = Math.sqrt(dx * dx + dy * dy);
+      if (L === 0) return;
+      
+      // Unit normal vector (perpendicular to element)
+      // For BMD, positive moment (tension on bottom) draws on tension side
+      const nx = -dy / L;
+      const ny = dx / L;
+
       const points: number[] = [];
       
-      // Start from baseline at node I
-      const startPos = toScreen(nodeI.x, 0);
-      points.push(startPos.x, baseY);
+      // Start from node I on baseline
+      points.push(startPos.x, startPos.y);
 
-      // Add all moment points (positive moment drawn below for engineering convention)
-      forces.x.forEach((x, i) => {
-        const screenX = offsetX + (nodeI.x + x) * scale;
-        const screenY = baseY + forces.M[i] * momentScale; // + for tension on bottom
-        points.push(screenX, screenY);
+      // Add all moment points offset perpendicular to element
+      // Positive moment drawn on tension side (typically below for simple beams)
+      forces.x.forEach((xLocal, i) => {
+        const ratio = xLocal / L;
+        const wx = nodeI.x + dx * ratio;
+        const wy = nodeI.y + dy * ratio;
+        // Offset by moment in negative normal direction (tension side)
+        const offset = -forces.M[i] * momentScale;
+        const screenPos = toScreen(wx + nx * offset / scale, wy + ny * offset / scale);
+        points.push(screenPos.x, screenPos.y);
       });
 
-      // Close back to baseline
-      const endPos = toScreen(nodeJ.x, 0);
-      points.push(endPos.x, baseY);
+      // Close back to node J on baseline
+      points.push(endPos.x, endPos.y);
 
       diagrams.push(
         <Group key={`bmd-${elem.id}`}>
@@ -282,14 +314,18 @@ const ResultsCanvas: React.FC = () => {
       // Add value labels at key points
       const maxM = Math.max(...forces.M.map(Math.abs));
       const maxIdx = forces.M.findIndex(m => Math.abs(m) === maxM);
-      if (maxIdx >= 0) {
-        const labelX = offsetX + (nodeI.x + forces.x[maxIdx]) * scale;
-        const labelY = baseY + forces.M[maxIdx] * momentScale;
+      if (maxIdx >= 0 && maxM > 0) {
+        const ratio = forces.x[maxIdx] / L;
+        const wx = nodeI.x + dx * ratio;
+        const wy = nodeI.y + dy * ratio;
+        const offset = -forces.M[maxIdx] * momentScale;
+        const labelPos = toScreen(wx + nx * offset / scale, wy + ny * offset / scale);
+        
         diagrams.push(
           <Text
             key={`bmd-label-${elem.id}`}
-            x={labelX + 5}
-            y={labelY + 5}
+            x={labelPos.x + 5}
+            y={labelPos.y + 5}
             text={`${(Math.abs(forces.M[maxIdx]) / 1000).toFixed(1)} kN·m`}
             fill="#c2410c"
             fontSize={11}
@@ -299,19 +335,9 @@ const ResultsCanvas: React.FC = () => {
       }
     });
 
-    // Draw baseline (beam location)
-    const baseline = (
-      <Line
-        key="bmd-baseline"
-        points={[offsetX, offsetY, offsetX + 1000, offsetY]}
-        stroke="#374151"
-        strokeWidth={2}
-      />
-    );
-
     return (
       <>
-        {baseline}
+        {structureLines}
         {diagrams}
       </>
     );

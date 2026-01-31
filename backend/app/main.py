@@ -10,13 +10,13 @@ from .models import (
     NodeDisplacement, NodeReaction, ElementInternalForces,
     SupportType as APISupportType
 )
-from .structure import Structure, SupportType
+from .structure_2d import Structure2D, SupportType
 
 
 app = FastAPI(
     title="Smatrix API",
     description="Structural Matrix Analysis for 2D Beams and Frames",
-    version="0.2.0"
+    version="0.3.0"
 )
 
 # CORS configuration
@@ -38,8 +38,10 @@ def health_check():
 def map_support_type(api_support: APISupportType) -> SupportType:
     """Map API support type to internal support type."""
     mapping = {
-        APISupportType.FREE: SupportType.FREE,
-        APISupportType.ROLLER: SupportType.ROLLER,
+        APISupportType.FREE: SupportType.NONE,
+        APISupportType.ROLLER: SupportType.ROLLER_X,
+        APISupportType.ROLLER_X: SupportType.ROLLER_X,
+        APISupportType.ROLLER_Y: SupportType.ROLLER_Y,
         APISupportType.PIN: SupportType.PIN,
         APISupportType.FIXED: SupportType.FIXED,
     }
@@ -49,7 +51,13 @@ def map_support_type(api_support: APISupportType) -> SupportType:
 @app.post("/analyze", response_model=AnalysisResponse, responses={400: {"model": ErrorResponse}})
 def analyze_structure(request: AnalysisRequest):
     """
-    Analyze a 2D continuous beam structure.
+    Analyze a 2D beam/frame structure using Direct Stiffness Method.
+    
+    Supports:
+    - Continuous beams (horizontal)
+    - Portal frames
+    - Inclined members
+    - Various support types
     
     Returns displacements, reactions, and internal forces (V, M).
     """
@@ -60,13 +68,13 @@ def analyze_structure(request: AnalysisRequest):
         if not request.elements:
             raise ValueError("At least one element is required")
         
-        # Build structure from request
-        struct = Structure()
+        # Build structure using Structure2D for full 2D analysis
+        struct = Structure2D()
         
         # Add nodes
         for node in request.nodes:
             struct.add_node(
-                id=node.id,
+                node_id=node.id,
                 x=node.x,
                 y=node.y,
                 support=map_support_type(node.support)
@@ -75,10 +83,11 @@ def analyze_structure(request: AnalysisRequest):
         # Add elements
         for elem in request.elements:
             struct.add_element(
-                id=elem.id,
-                node_i=elem.node_i,
-                node_j=elem.node_j,
+                elem_id=elem.id,
+                node_i_id=elem.node_i,
+                node_j_id=elem.node_j,
                 E=elem.E,
+                A=getattr(elem, 'A', 1e-2),
                 I=elem.I
             )
         
@@ -86,49 +95,61 @@ def analyze_structure(request: AnalysisRequest):
         for load in request.point_loads:
             struct.add_point_load(
                 node_id=load.node_id,
+                Fx=getattr(load, 'Fx', 0.0),
                 Fy=load.Fy,
                 Mz=load.Mz
             )
         
-        # Add UDLs
+        # Add UDLs (as vertical loads in global Y)
         for udl in request.udls:
-            struct.add_udl(
+            struct.add_element_udl(
                 element_id=udl.element_id,
-                w=udl.w
+                wx=0.0,
+                wy=udl.w
             )
         
         # Solve
         result = struct.solve()
         
         # Compute internal forces
-        internal_forces = struct.compute_internal_forces(n_points=21)
+        internal_forces = struct.compute_element_forces()
         
         # Build response
         displacements = []
-        for node_id in struct.nodes.keys():
-            v, theta = struct.get_node_displacement(node_id)
+        for node_id, disp in result["displacements"].items():
             displacements.append(NodeDisplacement(
                 node_id=node_id,
-                v=v,
-                theta=theta
+                u=disp[0],
+                v=disp[1],
+                theta=disp[2]
             ))
         
         reactions = []
-        for node_id, (Fy, Mz) in result["reactions"].items():
+        for node_id, react in result["reactions"].items():
             reactions.append(NodeReaction(
                 node_id=node_id,
-                Fy=Fy,
-                Mz=Mz
+                Fx=react[0],
+                Fy=react[1],
+                Mz=react[2]
             ))
         
+        # Build internal forces response
         forces = []
         for elem_id, data in internal_forces.items():
+            elem = struct.elements[elem_id]
+            node_i = struct.nodes[elem.node_i_id]
+            node_j = struct.nodes[elem.node_j_id]
+            L = ((node_j.x - node_i.x)**2 + (node_j.y - node_i.y)**2)**0.5
+            
+            # Convert stations to absolute x positions along element
+            x_positions = [s * L for s in data["stations"].tolist()]
+            
             forces.append(ElementInternalForces(
                 element_id=elem_id,
-                stations=data["stations"],
-                x=data["x"],
-                V=data["V"],
-                M=data["M"]
+                stations=data["stations"].tolist(),
+                x=x_positions,
+                V=data["V"].tolist(),
+                M=data["M"].tolist()
             ))
         
         return AnalysisResponse(

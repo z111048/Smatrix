@@ -17,9 +17,11 @@ interface AnalysisRequest {
     node_j: number;
     E: number;
     I: number;
+    A?: number;
   }>;
   point_loads: Array<{
     node_id: number;
+    Fx?: number;
     Fy: number;
     Mz: number;
   }>;
@@ -47,10 +49,12 @@ export async function analyzeStructure(
       node_i: e.nodeI,
       node_j: e.nodeJ,
       E: e.E,
-      I: e.I
+      I: e.I,
+      A: e.A || 1e-2
     })),
     point_loads: pointLoads.map(p => ({
       node_id: p.nodeId,
+      Fx: p.Fx || 0,
       Fy: p.Fy,
       Mz: p.Mz
     })),

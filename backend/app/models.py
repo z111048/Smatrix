@@ -9,9 +9,11 @@ from enum import Enum
 
 class SupportType(str, Enum):
     FREE = "free"
-    ROLLER = "roller"
-    PIN = "pin"
-    FIXED = "fixed"
+    ROLLER = "roller"      # Roller on ground (v=0, can move horizontally)
+    ROLLER_X = "roller_x"  # Same as ROLLER
+    ROLLER_Y = "roller_y"  # Roller on wall (u=0, can move vertically)
+    PIN = "pin"            # Pin support (u=0, v=0)
+    FIXED = "fixed"        # Fixed support (u=0, v=0, θ=0)
 
 
 class NodeInput(BaseModel):
@@ -29,11 +31,13 @@ class ElementInput(BaseModel):
     node_j: int
     E: float = Field(default=200e9, description="Young's modulus (Pa)")
     I: float = Field(default=1e-4, description="Moment of inertia (m^4)")
+    A: float = Field(default=1e-2, description="Cross-sectional area (m^2)")
 
 
 class PointLoadInput(BaseModel):
     """Point load at a node."""
     node_id: int
+    Fx: float = Field(default=0.0, description="Horizontal force (N), positive rightward")
     Fy: float = Field(default=0.0, description="Vertical force (N), positive upward")
     Mz: float = Field(default=0.0, description="Moment (N·m), positive counter-clockwise")
 
@@ -55,6 +59,7 @@ class AnalysisRequest(BaseModel):
 class NodeDisplacement(BaseModel):
     """Displacement result for a node."""
     node_id: int
+    u: float = Field(default=0.0, description="Horizontal displacement (m)")
     v: float = Field(description="Vertical displacement (m)")
     theta: float = Field(description="Rotation (rad)")
 
@@ -62,6 +67,7 @@ class NodeDisplacement(BaseModel):
 class NodeReaction(BaseModel):
     """Reaction force at a support."""
     node_id: int
+    Fx: float = Field(default=0.0, description="Horizontal reaction (N)")
     Fy: float = Field(description="Vertical reaction (N)")
     Mz: float = Field(description="Moment reaction (N·m)")
 

@@ -295,13 +295,22 @@ const Canvas: React.FC = () => {
               {/* Support symbol */}
               {renderSupport(node, pos)}
               
-              {/* Node circle */}
+              {/* Node circle - orange for unsupported nodes */}
               <Circle
                 x={pos.x}
                 y={pos.y}
                 radius={NODE_RADIUS}
-                fill={isSelected ? '#2563eb' : isBeamStart ? '#16a34a' : '#1f2937'}
-                stroke={isSelected ? '#1d4ed8' : '#374151'}
+                fill={
+                  isSelected ? '#2563eb' : 
+                  isBeamStart ? '#16a34a' : 
+                  node.support === 'free' ? '#f97316' :  // Orange for free nodes
+                  '#1f2937'
+                }
+                stroke={
+                  isSelected ? '#1d4ed8' : 
+                  node.support === 'free' ? '#ea580c' :  // Dark orange border
+                  '#374151'
+                }
                 strokeWidth={2}
                 onClick={(e) => handleNodeClick(node, e)}
               />
