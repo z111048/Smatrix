@@ -110,10 +110,14 @@ class Structure:
         return (2 * idx, 2 * idx + 1)
     
     def _get_element_length(self, elem: Element) -> float:
-        """Calculate element length."""
+        """Calculate element length using Euclidean distance."""
         ni = self.nodes[elem.node_i]
         nj = self.nodes[elem.node_j]
-        return abs(nj.x - ni.x)
+        # Use full 2D Euclidean distance for inclined members
+        dx = nj.x - ni.x
+        dy = nj.y - ni.y
+        L = np.sqrt(dx**2 + dy**2)
+        return L
     
     def _get_beam_element(self, elem: Element) -> BeamElement:
         """Create a BeamElement object from an Element."""

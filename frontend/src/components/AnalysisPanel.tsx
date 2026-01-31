@@ -14,8 +14,20 @@ const AnalysisPanel: React.FC = () => {
   } = useStore();
 
   const handleAnalyze = async () => {
-    if (nodes.length < 2 || elements.length < 1) {
-      setError('Need at least 2 nodes and 1 element');
+    if (nodes.length < 2) {
+      setError('需要至少 2 個節點 / Need at least 2 nodes');
+      return;
+    }
+    
+    if (elements.length < 1) {
+      setError('需要至少 1 個桿件 / Need at least 1 element');
+      return;
+    }
+    
+    // Check if at least one node has a support
+    const hasSupport = nodes.some(n => n.support !== 'free');
+    if (!hasSupport) {
+      setError('需要至少 1 個支承 / Need at least 1 support (pin, roller, or fixed)');
       return;
     }
 
@@ -27,7 +39,15 @@ const AnalysisPanel: React.FC = () => {
       setResult(analysisResult);
       setViewMode('deflection');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Analysis failed');
+      const errorMessage = err instanceof Error ? err.message : 'Analysis failed';
+      // Translate common error messages
+      let displayError = errorMessage;
+      if (errorMessage.includes('singular')) {
+        displayError = '結構不穩定 / Structure is unstable (check supports and connections)';
+      } else if (errorMessage.includes('Length must be positive')) {
+        displayError = '桿件長度必須為正值 / Element length must be positive';
+      }
+      setError(displayError);
       setResult(null);
     } finally {
       setLoading(false);

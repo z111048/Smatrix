@@ -15,8 +15,8 @@ from .structure import Structure, SupportType
 
 app = FastAPI(
     title="Smatrix API",
-    description="Structural Matrix Analysis for 2D Continuous Beams",
-    version="0.1.0"
+    description="Structural Matrix Analysis for 2D Beams and Frames",
+    version="0.2.0"
 )
 
 # CORS configuration
@@ -54,6 +54,12 @@ def analyze_structure(request: AnalysisRequest):
     Returns displacements, reactions, and internal forces (V, M).
     """
     try:
+        # Validate input
+        if not request.nodes:
+            raise ValueError("At least one node is required")
+        if not request.elements:
+            raise ValueError("At least one element is required")
+        
         # Build structure from request
         struct = Structure()
         
