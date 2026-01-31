@@ -1,6 +1,6 @@
 // Canvas component using React-Konva
 
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { Stage, Layer, Line, Circle, Group, Text, Arrow } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useStore } from '../store';
@@ -37,6 +37,35 @@ const SupportFixed: React.FC<{ x: number; y: number }> = ({ x, y }) => (
 
 const Canvas: React.FC = () => {
   const stageRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 800, height: 500 });
+  
+  // Responsive canvas sizing
+  useEffect(() => {
+    const updateSize = () => {
+      if (containerRef.current) {
+        const { clientWidth, clientHeight } = containerRef.current;
+        setDimensions({
+          width: clientWidth,
+          height: Math.max(clientHeight, 300)
+        });
+      }
+    };
+    
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    
+    // ResizeObserver for container size changes
+    const resizeObserver = new ResizeObserver(updateSize);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+    
+    return () => {
+      window.removeEventListener('resize', updateSize);
+      resizeObserver.disconnect();
+    };
+  }, []);
   
   const {
     nodes, elements, pointLoads, udls,
@@ -115,8 +144,7 @@ const Canvas: React.FC = () => {
   // Draw grid
   const drawGrid = () => {
     const lines = [];
-    const width = 1200;
-    const height = 600;
+    const { width, height } = dimensions;
     
     for (let x = 0; x < width; x += GRID_SIZE) {
       lines.push(
@@ -229,14 +257,15 @@ const Canvas: React.FC = () => {
   };
 
   return (
-    <Stage
-      ref={stageRef}
-      width={1200}
-      height={600}
-      onClick={handleStageClick}
-      onWheel={handleWheel}
-      style={{ border: '1px solid #d1d5db', borderRadius: '8px', background: '#fafafa' }}
-    >
+    <div ref={containerRef} style={{ width: '100%', height: '100%', minHeight: 'inherit' }}>
+      <Stage
+        ref={stageRef}
+        width={dimensions.width}
+        height={dimensions.height}
+        onClick={handleStageClick}
+        onWheel={handleWheel}
+        style={{ background: '#fafafa' }}
+      >
       <Layer>
         {/* Grid */}
         {drawGrid()}
@@ -330,27 +359,28 @@ const Canvas: React.FC = () => {
           );
         })}
         
-        {/* Coordinate axes */}
+        {/* Coordinate axes - positioned relative to canvas size */}
         <Arrow
-          points={[50, 550, 120, 550]}
+          points={[50, dimensions.height - 50, 120, dimensions.height - 50]}
           stroke="#9ca3af"
           strokeWidth={2}
           pointerLength={8}
           pointerWidth={6}
           fill="#9ca3af"
         />
-        <Text x={125} y={543} text="X" fill="#9ca3af" fontSize={14} />
+        <Text x={125} y={dimensions.height - 57} text="X" fill="#9ca3af" fontSize={14} />
         <Arrow
-          points={[50, 550, 50, 480]}
+          points={[50, dimensions.height - 50, 50, dimensions.height - 120]}
           stroke="#9ca3af"
           strokeWidth={2}
           pointerLength={8}
           pointerWidth={6}
           fill="#9ca3af"
         />
-        <Text x={43} y={465} text="Y" fill="#9ca3af" fontSize={14} />
+        <Text x={43} y={dimensions.height - 135} text="Y" fill="#9ca3af" fontSize={14} />
       </Layer>
     </Stage>
+    </div>
   );
 };
 

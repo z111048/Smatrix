@@ -1,14 +1,46 @@
 // Results visualization canvas component
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { Stage, Layer, Line, Circle, Group, Text } from 'react-konva';
 import { useStore } from '../store';
 
 const ResultsCanvas: React.FC = () => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 800, height: 500 });
+  
   const {
     nodes, elements, result, viewMode,
     scale, offsetX, offsetY
   } = useStore();
+
+  // Responsive canvas sizing
+  useEffect(() => {
+    const updateSize = () => {
+      // Find the canvas-container parent
+      const container = containerRef.current?.parentElement;
+      if (container) {
+        const { clientWidth, clientHeight } = container;
+        setDimensions({
+          width: clientWidth,
+          height: Math.max(clientHeight, 300)
+        });
+      }
+    };
+    
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    
+    const resizeObserver = new ResizeObserver(updateSize);
+    const container = containerRef.current?.parentElement;
+    if (container) {
+      resizeObserver.observe(container);
+    }
+    
+    return () => {
+      window.removeEventListener('resize', updateSize);
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   const getNode = (id: number) => nodes.find(n => n.id === id);
 
@@ -19,7 +51,7 @@ const ResultsCanvas: React.FC = () => {
   }), [offsetX, offsetY, scale]);
 
   if (!result || viewMode === 'structure') {
-    return null;
+    return <div ref={containerRef} style={{ display: 'none' }} />;
   }
 
   // Get displacement for a node
@@ -344,17 +376,14 @@ const ResultsCanvas: React.FC = () => {
   };
 
   return (
-    <Stage
-      width={1200}
-      height={600}
-      style={{ 
-        position: 'absolute', 
-        top: 0, 
-        left: 0, 
-        pointerEvents: 'none',
-        background: 'rgba(255,255,255,0.95)'
-      }}
-    >
+    <div ref={containerRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+      <Stage
+        width={dimensions.width}
+        height={dimensions.height}
+        style={{ 
+          background: 'rgba(255,255,255,0.95)'
+        }}
+      >
       <Layer>
         {/* Title */}
         <Text
@@ -375,7 +404,7 @@ const ResultsCanvas: React.FC = () => {
         {viewMode === 'bmd' && renderBMD()}
 
         {/* Legend */}
-        <Group x={20} y={550}>
+        <Group x={20} y={dimensions.height - 50}>
           {viewMode === 'deflection' && (
             <>
               <Line points={[0, 10, 40, 10]} stroke="#9ca3af" strokeWidth={2} dash={[8, 4]} />
@@ -399,6 +428,7 @@ const ResultsCanvas: React.FC = () => {
         </Group>
       </Layer>
     </Stage>
+    </div>
   );
 };
 
