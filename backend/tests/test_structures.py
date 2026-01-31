@@ -12,6 +12,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app.structure import Structure, SupportType
 from app.beam_element import BeamElement
+from app.frame_element import FrameElement2D, ReleaseType
+from app.structure_2d import Structure2D, SupportType as SupportType2D
 
 
 class TestBeamElement:
@@ -344,6 +346,166 @@ class TestInternalForces:
         
         assert abs(M_left_end - M_max_expected) / M_max_expected < 0.05, \
             f"M_max = {M_left_end}, expected {M_max_expected}"
+
+
+class TestFrameElement2D:
+    """Tests for 2D frame elements with inclined members and releases"""
+    
+    E = 200e9
+    A = 1e-2
+    I = 1e-4
+    
+    def test_horizontal_stiffness(self):
+        """Horizontal frame element stiffness"""
+        elem = FrameElement2D(
+            E=self.E, A=self.A, I=self.I,
+            node_i=(0, 0), node_j=(4, 0)
+        )
+        
+        K_local = elem.local_stiffness_matrix()
+        K_global = elem.global_stiffness_matrix()
+        
+        # For horizontal member, local = global
+        assert np.allclose(K_local, K_global, rtol=1e-10)
+    
+    def test_vertical_stiffness(self):
+        """Vertical frame element stiffness transformation"""
+        elem = FrameElement2D(
+            E=self.E, A=self.A, I=self.I,
+            node_i=(0, 0), node_j=(0, 4)
+        )
+        
+        assert abs(elem.angle - np.pi/2) < 1e-10, "Angle should be 90°"
+        
+        K_global = elem.global_stiffness_matrix()
+        assert np.allclose(K_global, K_global.T), "Global stiffness not symmetric"
+    
+    def test_inclined_45_deg(self):
+        """45-degree inclined frame element"""
+        elem = FrameElement2D(
+            E=self.E, A=self.A, I=self.I,
+            node_i=(0, 0), node_j=(4, 4)
+        )
+        
+        assert abs(elem.angle - np.pi/4) < 1e-10, "Angle should be 45°"
+        assert abs(elem.L - 4 * np.sqrt(2)) < 1e-10, "Length incorrect"
+        
+        K_global = elem.global_stiffness_matrix()
+        assert np.allclose(K_global, K_global.T), "Global stiffness not symmetric"
+    
+    def test_moment_release_both_ends(self):
+        """Member with moment releases at both ends (truss behavior)"""
+        elem = FrameElement2D(
+            E=self.E, A=self.A, I=self.I,
+            node_i=(0, 0), node_j=(4, 0),
+            release_i=[ReleaseType.MOMENT],
+            release_j=[ReleaseType.MOMENT]
+        )
+        
+        K = elem.global_stiffness_matrix()
+        
+        # Only axial stiffness should remain
+        EA_L = self.E * self.A / 4
+        assert abs(K[0, 0] - EA_L) / EA_L < 0.01, "Axial stiffness incorrect"
+        assert abs(K[2, 2]) < 1, "Rotational stiffness should be zero"
+        assert abs(K[5, 5]) < 1, "Rotational stiffness should be zero"
+
+
+class TestStructure2D:
+    """Tests for 2D frame/truss structures"""
+    
+    E = 200e9
+    A = 1e-2
+    I = 1e-4
+    
+    def test_portal_frame_horizontal_load(self):
+        """Portal frame with horizontal load at top"""
+        struct = Structure2D()
+        
+        H = 4.0  # Height
+        W = 6.0  # Width
+        
+        struct.add_node(1, 0, 0, SupportType2D.FIXED)
+        struct.add_node(2, 0, H)
+        struct.add_node(3, W, H)
+        struct.add_node(4, W, 0, SupportType2D.FIXED)
+        
+        struct.add_element(1, 1, 2, self.E, self.A, self.I)
+        struct.add_element(2, 2, 3, self.E, self.A, self.I)
+        struct.add_element(3, 3, 4, self.E, self.A, self.I)
+        
+        P = 50000  # 50 kN
+        struct.add_point_load(2, Fx=P)
+        
+        result = struct.solve()
+        
+        # Check horizontal equilibrium
+        R1_x = result["reactions"][1][0]
+        R4_x = result["reactions"][4][0]
+        total_Rx = R1_x + R4_x
+        
+        assert abs(total_Rx + P) < 100, "Horizontal equilibrium failed"
+    
+    def test_simple_truss_equilibrium(self):
+        """Simple triangle truss with vertical load"""
+        struct = Structure2D()
+        
+        struct.add_node(1, 0, 0, SupportType2D.PIN)
+        struct.add_node(2, 4, 0, SupportType2D.ROLLER_X)
+        struct.add_node(3, 2, 3)
+        
+        # All members with moment releases (truss behavior)
+        struct.add_element(1, 1, 2, self.E, self.A, self.I,
+                          release_i=[ReleaseType.MOMENT],
+                          release_j=[ReleaseType.MOMENT])
+        struct.add_element(2, 1, 3, self.E, self.A, self.I,
+                          release_i=[ReleaseType.MOMENT],
+                          release_j=[ReleaseType.MOMENT])
+        struct.add_element(3, 2, 3, self.E, self.A, self.I,
+                          release_i=[ReleaseType.MOMENT],
+                          release_j=[ReleaseType.MOMENT])
+        
+        P = 100000  # 100 kN
+        struct.add_point_load(3, Fy=-P)
+        
+        result = struct.solve()
+        
+        # Check vertical equilibrium
+        R1_y = result["reactions"][1][1]
+        R2_y = result["reactions"][2][1]
+        total_Ry = R1_y + R2_y
+        
+        assert abs(total_Ry - P) < 100, "Vertical equilibrium failed"
+        
+        # Symmetric truss should have equal reactions
+        assert abs(R1_y - R2_y) / R1_y < 0.01, "Symmetric reactions expected"
+    
+    def test_continuous_beam_udl(self):
+        """Three-span continuous beam with UDL"""
+        struct = Structure2D()
+        
+        struct.add_node(1, 0, 0, SupportType2D.PIN)
+        struct.add_node(2, 5, 0, SupportType2D.PIN)
+        struct.add_node(3, 10, 0, SupportType2D.PIN)
+        struct.add_node(4, 15, 0, SupportType2D.ROLLER_X)
+        
+        struct.add_element(1, 1, 2, self.E, self.A, self.I)
+        struct.add_element(2, 2, 3, self.E, self.A, self.I)
+        struct.add_element(3, 3, 4, self.E, self.A, self.I)
+        
+        w = 20000  # 20 kN/m
+        struct.add_element_udl(1, wy=-w)
+        struct.add_element_udl(2, wy=-w)
+        struct.add_element_udl(3, wy=-w)
+        
+        result = struct.solve()
+        
+        # Check equilibrium
+        total_load = w * 15
+        total_reaction = -sum(r[1] for r in result["reactions"].values())
+        
+        assert abs(total_reaction - total_load) / total_load < 0.01, "Equilibrium failed"
+
 
 
 if __name__ == "__main__":
