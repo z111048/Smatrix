@@ -7,7 +7,7 @@ import type { ViewMode } from '../types';
 
 const AnalysisPanel: React.FC = () => {
   const {
-    nodes, elements, pointLoads, udls,
+    nodes, elements, pointLoads, udls, elementPointLoads,
     result, isLoading, error,
     viewMode, setViewMode,
     setResult, setLoading, setError
@@ -39,7 +39,7 @@ const AnalysisPanel: React.FC = () => {
     setError(null);
 
     try {
-      const analysisResult = await analyzeStructure(nodes, elements, pointLoads, udls);
+      const analysisResult = await analyzeStructure(nodes, elements, pointLoads, udls, elementPointLoads);
       setResult(analysisResult);
       setViewMode('deflection');
     } catch (err) {
@@ -122,6 +122,7 @@ const AnalysisPanel: React.FC = () => {
                 <thead>
                   <tr>
                     <th>Node</th>
+                    <th>u (mm)</th>
                     <th>v (mm)</th>
                     <th>θ (mrad)</th>
                   </tr>
@@ -130,6 +131,7 @@ const AnalysisPanel: React.FC = () => {
                   {result.displacements.map(d => (
                     <tr key={d.node_id}>
                       <td>{d.node_id}</td>
+                      <td>{((d.u || 0) * 1000).toFixed(3)}</td>
                       <td>{(d.v * 1000).toFixed(3)}</td>
                       <td>{(d.theta * 1000).toFixed(3)}</td>
                     </tr>
@@ -144,6 +146,7 @@ const AnalysisPanel: React.FC = () => {
                 <thead>
                   <tr>
                     <th>Node</th>
+                    <th>Fx (kN)</th>
                     <th>Fy (kN)</th>
                     <th>Mz (kN·m)</th>
                   </tr>
@@ -152,6 +155,7 @@ const AnalysisPanel: React.FC = () => {
                   {result.reactions.map(r => (
                     <tr key={r.node_id}>
                       <td>{r.node_id}</td>
+                      <td>{((r.Fx || 0) / 1000).toFixed(2)}</td>
                       <td>{(r.Fy / 1000).toFixed(2)}</td>
                       <td>{(r.Mz / 1000).toFixed(2)}</td>
                     </tr>

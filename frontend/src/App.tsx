@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Canvas from './components/Canvas';
 import ResultsCanvas from './components/ResultsCanvas';
 import Toolbar from './components/Toolbar';
@@ -7,7 +7,15 @@ import AnalysisPanel from './components/AnalysisPanel';
 import './App.css';
 
 function App() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.matchMedia('(min-width: 992px)').matches);
+
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 992px)');
+    const handleChange = () => setSidebarOpen(media.matches);
+
+    media.addEventListener('change', handleChange);
+    return () => media.removeEventListener('change', handleChange);
+  }, []);
 
   return (
     <div className="app">
@@ -19,7 +27,7 @@ function App() {
           onClick={() => setSidebarOpen(!sidebarOpen)}
           aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
         >
-          {sidebarOpen ? '✕' : '☰'}
+          {sidebarOpen ? 'X' : '☰'}
         </button>
       </header>
       
@@ -31,6 +39,14 @@ function App() {
           <ResultsCanvas />
         </div>
         
+        {sidebarOpen && (
+          <button
+            className="panel-backdrop mobile-only"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close panel"
+          />
+        )}
+
         <div className={`right-panel ${sidebarOpen ? 'open' : 'closed'}`}>
           <button 
             className="sidebar-collapse desktop-only"
@@ -41,6 +57,13 @@ function App() {
           </button>
           {sidebarOpen && (
             <>
+              <button
+                className="drawer-close mobile-only"
+                onClick={() => setSidebarOpen(false)}
+                aria-label="Close properties panel"
+              >
+                Close / 關閉
+              </button>
               <Sidebar />
               <AnalysisPanel />
             </>

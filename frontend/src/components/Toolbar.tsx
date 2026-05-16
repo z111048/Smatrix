@@ -13,6 +13,7 @@ const Toolbar: React.FC = () => {
     { mode: 'addBeam', label: 'Add Beam', icon: '━' },
     { mode: 'addPointLoad', label: 'Point Load', icon: '↓' },
     { mode: 'addUDL', label: 'UDL', icon: '⇊' },
+    { mode: 'addElementPointLoad', label: 'Element Load', icon: '↧' },
   ];
 
   return (

@@ -1,7 +1,7 @@
 // Zustand store for Smatrix state management
 
 import { create } from 'zustand';
-import type { Node, Element, PointLoad, UDL, AnalysisResult, EditorMode, ViewMode, SupportType } from '../types';
+import type { Node, Element, PointLoad, UDL, ElementPointLoad, AnalysisResult, EditorMode, ViewMode, SupportType } from '../types';
 
 interface StoreState {
   // Structure data
@@ -9,6 +9,7 @@ interface StoreState {
   elements: Element[];
   pointLoads: PointLoad[];
   udls: UDL[];
+  elementPointLoads: ElementPointLoad[];
   
   // UI state
   mode: EditorMode;
@@ -32,6 +33,7 @@ interface StoreState {
   // Default material properties
   defaultE: number;
   defaultI: number;
+  defaultA: number;
   
   // Actions
   addNode: (x: number, y: number) => void;
@@ -42,13 +44,17 @@ interface StoreState {
   updateElement: (id: number, updates: Partial<Element>) => void;
   deleteElement: (id: number) => void;
   
-  addPointLoad: (nodeId: number, Fy: number, Mz?: number) => void;
+  addPointLoad: (nodeId: number, Fx: number, Fy: number, Mz?: number) => void;
   updatePointLoad: (nodeId: number, updates: Partial<PointLoad>) => void;
   deletePointLoad: (nodeId: number) => void;
   
   addUDL: (elementId: number, w: number) => void;
   updateUDL: (elementId: number, w: number) => void;
   deleteUDL: (elementId: number) => void;
+
+  addElementPointLoad: (elementId: number, a: number, Fx: number, Fy: number) => void;
+  updateElementPointLoad: (elementId: number, updates: Partial<ElementPointLoad>) => void;
+  deleteElementPointLoad: (elementId: number) => void;
   
   setMode: (mode: EditorMode) => void;
   setViewMode: (mode: ViewMode) => void;
@@ -62,6 +68,8 @@ interface StoreState {
   
   setScale: (scale: number) => void;
   setOffset: (x: number, y: number) => void;
+  panViewport: (dx: number, dy: number) => void;
+  resetViewport: () => void;
   
   clearAll: () => void;
 }
@@ -75,6 +83,7 @@ export const useStore = create<StoreState>((set, get) => ({
   elements: [],
   pointLoads: [],
   udls: [],
+  elementPointLoads: [],
   
   mode: 'select',
   viewMode: 'structure',
@@ -93,6 +102,7 @@ export const useStore = create<StoreState>((set, get) => ({
   
   defaultE: 200e9,  // 200 GPa (steel)
   defaultI: 1e-4,   // 1e-4 m^4
+  defaultA: 1e-2,   // 0.01 m^2
   
   // Node actions
   addNode: (x: number, y: number) => {
@@ -114,6 +124,14 @@ export const useStore = create<StoreState>((set, get) => ({
     set(state => ({
       nodes: state.nodes.filter(n => n.id !== id),
       elements: state.elements.filter(e => e.nodeI !== id && e.nodeJ !== id),
+      udls: state.udls.filter(u => {
+        const elem = state.elements.find(e => e.id === u.elementId);
+        return elem && elem.nodeI !== id && elem.nodeJ !== id;
+      }),
+      elementPointLoads: state.elementPointLoads.filter(load => {
+        const elem = state.elements.find(e => e.id === load.elementId);
+        return elem && elem.nodeI !== id && elem.nodeJ !== id;
+      }),
       pointLoads: state.pointLoads.filter(p => p.nodeId !== id),
       selectedNodeId: state.selectedNodeId === id ? null : state.selectedNodeId
     }));
@@ -121,10 +139,10 @@ export const useStore = create<StoreState>((set, get) => ({
   
   // Element actions
   addElement: (nodeI: number, nodeJ: number) => {
-    const { defaultE, defaultI } = get();
+    const { defaultE, defaultI, defaultA } = get();
     const id = nextElementId++;
     set(state => ({
-      elements: [...state.elements, { id, nodeI, nodeJ, E: defaultE, I: defaultI }],
+      elements: [...state.elements, { id, nodeI, nodeJ, E: defaultE, I: defaultI, A: defaultA }],
       selectedElementId: id,
       selectedNodeId: null,
       beamStartNodeId: null
@@ -141,22 +159,23 @@ export const useStore = create<StoreState>((set, get) => ({
     set(state => ({
       elements: state.elements.filter(e => e.id !== id),
       udls: state.udls.filter(u => u.elementId !== id),
+      elementPointLoads: state.elementPointLoads.filter(load => load.elementId !== id),
       selectedElementId: state.selectedElementId === id ? null : state.selectedElementId
     }));
   },
   
   // Point load actions
-  addPointLoad: (nodeId: number, Fy: number, Mz: number = 0) => {
+  addPointLoad: (nodeId: number, Fx: number, Fy: number, Mz: number = 0) => {
     set(state => {
       const existing = state.pointLoads.find(p => p.nodeId === nodeId);
       if (existing) {
         return {
           pointLoads: state.pointLoads.map(p => 
-            p.nodeId === nodeId ? { ...p, Fy, Mz } : p
+            p.nodeId === nodeId ? { ...p, Fx, Fy, Mz } : p
           )
         };
       }
-      return { pointLoads: [...state.pointLoads, { nodeId, Fy, Mz }] };
+      return { pointLoads: [...state.pointLoads, { nodeId, Fx, Fy, Mz }] };
     });
   },
   
@@ -198,6 +217,35 @@ export const useStore = create<StoreState>((set, get) => ({
       udls: state.udls.filter(u => u.elementId !== elementId)
     }));
   },
+
+  // Element point load actions
+  addElementPointLoad: (elementId: number, a: number, Fx: number, Fy: number) => {
+    set(state => {
+      const existing = state.elementPointLoads.find(load => load.elementId === elementId);
+      if (existing) {
+        return {
+          elementPointLoads: state.elementPointLoads.map(load =>
+            load.elementId === elementId ? { ...load, a, Fx, Fy } : load
+          )
+        };
+      }
+      return { elementPointLoads: [...state.elementPointLoads, { elementId, a, Fx, Fy }] };
+    });
+  },
+
+  updateElementPointLoad: (elementId: number, updates: Partial<ElementPointLoad>) => {
+    set(state => ({
+      elementPointLoads: state.elementPointLoads.map(load =>
+        load.elementId === elementId ? { ...load, ...updates } : load
+      )
+    }));
+  },
+
+  deleteElementPointLoad: (elementId: number) => {
+    set(state => ({
+      elementPointLoads: state.elementPointLoads.filter(load => load.elementId !== elementId)
+    }));
+  },
   
   // UI actions
   setMode: (mode: EditorMode) => set({ mode, beamStartNodeId: null }),
@@ -214,6 +262,11 @@ export const useStore = create<StoreState>((set, get) => ({
   // Canvas actions
   setScale: (scale: number) => set({ scale: Math.max(10, Math.min(200, scale)) }),
   setOffset: (offsetX: number, offsetY: number) => set({ offsetX, offsetY }),
+  panViewport: (dx: number, dy: number) => set(state => ({
+    offsetX: state.offsetX + dx,
+    offsetY: state.offsetY + dy
+  })),
+  resetViewport: () => set({ scale: 50, offsetX: 100, offsetY: 300 }),
   
   // Clear all
   clearAll: () => {
@@ -224,6 +277,7 @@ export const useStore = create<StoreState>((set, get) => ({
       elements: [],
       pointLoads: [],
       udls: [],
+      elementPointLoads: [],
       result: null,
       error: null,
       selectedNodeId: null,

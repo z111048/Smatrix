@@ -160,6 +160,34 @@ class TestAnalyzeEndpoint:
         # Element length should be sqrt((14.5-2.5)^2 + (-2.5-(-2))^2) ≈ 12.01
         # This verifies the Euclidean distance fix
 
+    def test_extended_inputs_fx_roller_y_area_and_element_point_load(self):
+        """API should accept the extended 2D inputs exposed by the frontend"""
+        request = {
+            "nodes": [
+                {"id": 1, "x": 0, "y": 0, "support": "fixed"},
+                {"id": 2, "x": 4, "y": 0, "support": "roller_y"}
+            ],
+            "elements": [
+                {"id": 1, "node_i": 1, "node_j": 2, "E": 200e9, "A": 2e-2, "I": 1e-4}
+            ],
+            "point_loads": [
+                {"node_id": 2, "Fx": 10000, "Fy": -5000, "Mz": 1000}
+            ],
+            "udls": [],
+            "element_point_loads": [
+                {"element_id": 1, "a": 2.0, "Fx": 0, "Fy": -10000}
+            ]
+        }
+
+        response = client.post("/analyze", json=request)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["success"] is True
+        assert len(data["displacements"]) == 2
+        assert len(data["reactions"]) == 2
+        assert len(data["internal_forces"]) == 1
+
 
 class TestErrorHandling:
     """Tests for error handling"""
@@ -216,6 +244,26 @@ class TestErrorHandling:
             ]
         }
         
+        response = client.post("/analyze", json=request)
+        assert response.status_code == 400
+
+    def test_invalid_element_point_load_distance(self):
+        """Element point load outside member length should fail"""
+        request = {
+            "nodes": [
+                {"id": 1, "x": 0, "y": 0, "support": "fixed"},
+                {"id": 2, "x": 4, "y": 0, "support": "free"}
+            ],
+            "elements": [
+                {"id": 1, "node_i": 1, "node_j": 2, "E": 200e9, "I": 1e-4}
+            ],
+            "point_loads": [],
+            "udls": [],
+            "element_point_loads": [
+                {"element_id": 1, "a": 5.0, "Fy": -10000}
+            ]
+        }
+
         response = client.post("/analyze", json=request)
         assert response.status_code == 400
     

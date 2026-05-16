@@ -54,6 +54,8 @@ const ResultsCanvas: React.FC = () => {
     return <div ref={containerRef} style={{ display: 'none' }} />;
   }
 
+  const isCompact = dimensions.width < 480;
+
   // Get displacement for a node
   const getDisplacement = (nodeId: number) => {
     const d = result.displacements.find(d => d.node_id === nodeId);
@@ -376,7 +378,7 @@ const ResultsCanvas: React.FC = () => {
   };
 
   return (
-    <div ref={containerRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+    <div ref={containerRef} className="results-canvas-overlay">
       <Stage
         width={dimensions.width}
         height={dimensions.height}
@@ -394,7 +396,7 @@ const ResultsCanvas: React.FC = () => {
             viewMode === 'sfd' ? 'Shear Force Diagram (SFD)' :
             viewMode === 'bmd' ? 'Bending Moment Diagram (BMD)' : ''
           }
-          fontSize={18}
+          fontSize={isCompact ? 14 : 18}
           fontStyle="bold"
           fill="#1f2937"
         />
@@ -404,25 +406,25 @@ const ResultsCanvas: React.FC = () => {
         {viewMode === 'bmd' && renderBMD()}
 
         {/* Legend */}
-        <Group x={20} y={dimensions.height - 50}>
+        <Group x={20} y={dimensions.height - 46}>
           {viewMode === 'deflection' && (
             <>
               <Line points={[0, 10, 40, 10]} stroke="#9ca3af" strokeWidth={2} dash={[8, 4]} />
-              <Text x={50} y={3} text="Original" fill="#6b7280" fontSize={12} />
+              <Text x={50} y={3} text={isCompact ? "Orig." : "Original"} fill="#6b7280" fontSize={12} />
               <Line points={[120, 10, 160, 10]} stroke="#ef4444" strokeWidth={3} />
-              <Text x={170} y={3} text="Deflected" fill="#6b7280" fontSize={12} />
+              <Text x={170} y={3} text={isCompact ? "Defl." : "Deflected"} fill="#6b7280" fontSize={12} />
             </>
           )}
           {viewMode === 'sfd' && (
             <>
               <Line points={[0, 0, 40, 0, 40, 20, 0, 20]} closed fill="rgba(59, 130, 246, 0.3)" stroke="#2563eb" />
-              <Text x={50} y={3} text="Shear Force (+ = clockwise)" fill="#6b7280" fontSize={12} />
+              <Text x={50} y={3} text={isCompact ? "Shear Force" : "Shear Force (+ = clockwise)"} fill="#6b7280" fontSize={12} />
             </>
           )}
           {viewMode === 'bmd' && (
             <>
               <Line points={[0, 0, 40, 0, 40, 20, 0, 20]} closed fill="rgba(234, 88, 12, 0.3)" stroke="#ea580c" />
-              <Text x={50} y={3} text="Bending Moment (drawn on tension side)" fill="#6b7280" fontSize={12} />
+              <Text x={50} y={3} text={isCompact ? "Bending Moment" : "Bending Moment (drawn on tension side)"} fill="#6b7280" fontSize={12} />
             </>
           )}
         </Group>

@@ -1,6 +1,6 @@
 // API client for Smatrix backend
 
-import type { Node, Element, PointLoad, UDL, AnalysisResult } from '../types';
+import type { Node, Element, PointLoad, UDL, ElementPointLoad, AnalysisResult } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -29,13 +29,20 @@ interface AnalysisRequest {
     element_id: number;
     w: number;
   }>;
+  element_point_loads: Array<{
+    element_id: number;
+    a: number;
+    Fx: number;
+    Fy: number;
+  }>;
 }
 
 export async function analyzeStructure(
   nodes: Node[],
   elements: Element[],
   pointLoads: PointLoad[],
-  udls: UDL[]
+  udls: UDL[],
+  elementPointLoads: ElementPointLoad[] = []
 ): Promise<AnalysisResult> {
   const request: AnalysisRequest = {
     nodes: nodes.map(n => ({
@@ -61,6 +68,12 @@ export async function analyzeStructure(
     udls: udls.map(u => ({
       element_id: u.elementId,
       w: u.w
+    })),
+    element_point_loads: elementPointLoads.map(load => ({
+      element_id: load.elementId,
+      a: load.a,
+      Fx: load.Fx,
+      Fy: load.Fy
     }))
   };
 

@@ -48,12 +48,21 @@ class UDLInput(BaseModel):
     w: float = Field(description="Load intensity (N/m), positive upward")
 
 
+class ElementPointLoadInput(BaseModel):
+    """Point load applied along an element."""
+    element_id: int
+    a: float = Field(description="Distance from node_i along element (m)")
+    Fx: float = Field(default=0.0, description="Horizontal force (N), positive rightward")
+    Fy: float = Field(default=0.0, description="Vertical force (N), positive upward")
+
+
 class AnalysisRequest(BaseModel):
     """Request body for structural analysis."""
     nodes: List[NodeInput]
     elements: List[ElementInput]
     point_loads: List[PointLoadInput] = []
     udls: List[UDLInput] = []
+    element_point_loads: List[ElementPointLoadInput] = []
 
 
 class NodeDisplacement(BaseModel):

@@ -2,6 +2,7 @@
 
 import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { Stage, Layer, Line, Circle, Group, Text, Arrow } from 'react-konva';
+import type { Stage as KonvaStage } from 'konva/lib/Stage';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useStore } from '../store';
 import type { Node, Element } from '../types';
@@ -26,6 +27,15 @@ const SupportRoller: React.FC<{ x: number; y: number }> = ({ x, y }) => (
   </Group>
 );
 
+const SupportRollerY: React.FC<{ x: number; y: number }> = ({ x, y }) => (
+  <Group>
+    <Line points={[x, y, x - 20, y - 15, x - 20, y + 15, x, y]} closed stroke="#16a34a" strokeWidth={2} />
+    <Circle x={x - 28} y={y - 10} radius={5} stroke="#16a34a" strokeWidth={2} />
+    <Circle x={x - 28} y={y + 10} radius={5} stroke="#16a34a" strokeWidth={2} />
+    <Line points={[x - 35, y - 20, x - 35, y + 20]} stroke="#16a34a" strokeWidth={2} />
+  </Group>
+);
+
 const SupportFixed: React.FC<{ x: number; y: number }> = ({ x, y }) => (
   <Group>
     <Line points={[x - 15, y - 20, x - 15, y + 20]} stroke="#dc2626" strokeWidth={3} />
@@ -36,9 +46,12 @@ const SupportFixed: React.FC<{ x: number; y: number }> = ({ x, y }) => (
 );
 
 const Canvas: React.FC = () => {
-  const stageRef = useRef<any>(null);
+  const stageRef = useRef<KonvaStage | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 500 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [lastPointer, setLastPointer] = useState<{ x: number; y: number } | null>(null);
+  const [didPan, setDidPan] = useState(false);
   
   // Responsive canvas sizing
   useEffect(() => {
@@ -68,13 +81,13 @@ const Canvas: React.FC = () => {
   }, []);
   
   const {
-    nodes, elements, pointLoads, udls,
+    nodes, elements, pointLoads, udls, elementPointLoads,
     mode, selectedNodeId, selectedElementId,
     scale, offsetX, offsetY,
     beamStartNodeId,
     addNode, setSelectedNode, setSelectedElement,
     setBeamStartNode, addElement,
-    setScale
+    setScale, panViewport, resetViewport
   } = useStore();
 
   // Convert world coordinates to screen
@@ -89,8 +102,23 @@ const Canvas: React.FC = () => {
     y: (offsetY - sy) / scale
   }), [offsetX, offsetY, scale]);
 
+  const modeHint = (() => {
+    if (mode === 'addNode') return 'Add Node / 新增節點：tap canvas';
+    if (mode === 'addBeam' && beamStartNodeId === null) return 'Add Beam / 新增桿件：tap first node';
+    if (mode === 'addBeam') return `Add Beam / 新增桿件：start node ${beamStartNodeId}, tap end node`;
+    if (mode === 'addPointLoad') return 'Point Load / 節點載重：select node, edit panel';
+    if (mode === 'addUDL') return 'UDL / 均佈載重：select element, edit panel';
+    if (mode === 'addElementPointLoad') return 'Element Load / 桿件集中載重：select element, edit panel';
+    return 'Select / 選取：tap model, drag blank canvas to pan';
+  })();
+
   // Handle stage click
   const handleStageClick = (e: KonvaEventObject<MouseEvent>) => {
+    if (didPan) {
+      setDidPan(false);
+      return;
+    }
+
     if (e.target === e.target.getStage()) {
       if (mode === 'addNode') {
         const pos = e.target.getStage()?.getPointerPosition();
@@ -115,6 +143,38 @@ const Canvas: React.FC = () => {
     setScale(scale + delta);
   };
 
+  const beginPan = (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
+    if (mode !== 'select' || e.target !== e.target.getStage()) return;
+
+    const pos = e.target.getStage()?.getPointerPosition();
+    if (!pos) return;
+
+    setIsPanning(true);
+    setLastPointer(pos);
+    setDidPan(false);
+  };
+
+  const updatePan = (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
+    if (!isPanning) return;
+
+    e.evt.preventDefault();
+    const pos = e.target.getStage()?.getPointerPosition();
+    if (!pos || !lastPointer) return;
+
+    const dx = pos.x - lastPointer.x;
+    const dy = pos.y - lastPointer.y;
+    if (Math.abs(dx) + Math.abs(dy) > 1) {
+      panViewport(dx, dy);
+      setDidPan(true);
+    }
+    setLastPointer(pos);
+  };
+
+  const endPan = () => {
+    setIsPanning(false);
+    setLastPointer(null);
+  };
+
   // Handle node click
   const handleNodeClick = (node: Node, e: KonvaEventObject<MouseEvent>) => {
     e.cancelBubble = true;
@@ -133,7 +193,7 @@ const Canvas: React.FC = () => {
   // Handle element click
   const handleElementClick = (elem: Element, e: KonvaEventObject<MouseEvent>) => {
     e.cancelBubble = true;
-    if (mode === 'select' || mode === 'addUDL') {
+    if (mode === 'select' || mode === 'addUDL' || mode === 'addElementPointLoad') {
       setSelectedElement(elem.id);
     }
   };
@@ -165,7 +225,10 @@ const Canvas: React.FC = () => {
       case 'pin':
         return <SupportPin x={screenPos.x} y={screenPos.y} />;
       case 'roller':
+      case 'roller_x':
         return <SupportRoller x={screenPos.x} y={screenPos.y} />;
+      case 'roller_y':
+        return <SupportRollerY x={screenPos.x} y={screenPos.y} />;
       case 'fixed':
         return <SupportFixed x={screenPos.x} y={screenPos.y} />;
       default:
@@ -176,29 +239,48 @@ const Canvas: React.FC = () => {
   // Draw point loads
   const renderPointLoad = (nodeId: number) => {
     const load = pointLoads.find(p => p.nodeId === nodeId);
-    if (!load || load.Fy === 0) return null;
+    if (!load || ((load.Fx || 0) === 0 && load.Fy === 0)) return null;
     
     const node = getNode(nodeId);
     if (!node) return null;
     
     const pos = toScreen(node.x, node.y);
-    const arrowLength = Math.min(80, Math.abs(load.Fy) / 10000 * 40 + 40);
+    const fx = load.Fx || 0;
+    const fy = load.Fy;
+    const forceMagnitude = Math.max(Math.abs(fx), Math.abs(fy));
+    const arrowLength = Math.min(80, forceMagnitude / 10000 * 40 + 40);
     const isDown = load.Fy < 0;
+    const isLeft = fx < 0;
     
     return (
       <Group key={`load-${nodeId}`}>
-        <Arrow
-          points={isDown ? [pos.x, pos.y - arrowLength, pos.x, pos.y - 5] : [pos.x, pos.y + arrowLength, pos.x, pos.y + 5]}
-          stroke="#ef4444"
-          strokeWidth={3}
-          pointerLength={10}
-          pointerWidth={8}
-          fill="#ef4444"
-        />
+        {fy !== 0 && (
+          <Arrow
+            points={isDown ? [pos.x, pos.y - arrowLength, pos.x, pos.y - 5] : [pos.x, pos.y + arrowLength, pos.x, pos.y + 5]}
+            stroke="#ef4444"
+            strokeWidth={3}
+            pointerLength={10}
+            pointerWidth={8}
+            fill="#ef4444"
+          />
+        )}
+        {fx !== 0 && (
+          <Arrow
+            points={isLeft ? [pos.x + arrowLength, pos.y, pos.x + 5, pos.y] : [pos.x - arrowLength, pos.y, pos.x - 5, pos.y]}
+            stroke="#dc2626"
+            strokeWidth={3}
+            pointerLength={10}
+            pointerWidth={8}
+            fill="#dc2626"
+          />
+        )}
         <Text
           x={pos.x + 10}
-          y={isDown ? pos.y - arrowLength - 10 : pos.y + arrowLength - 10}
-          text={`${Math.abs(load.Fy / 1000).toFixed(0)} kN`}
+          y={pos.y - arrowLength - 18}
+          text={[
+            fx !== 0 ? `Fx ${Math.abs(fx / 1000).toFixed(0)} kN` : '',
+            fy !== 0 ? `Fy ${Math.abs(fy / 1000).toFixed(0)} kN` : ''
+          ].filter(Boolean).join('\n')}
           fill="#ef4444"
           fontSize={12}
         />
@@ -256,15 +338,92 @@ const Canvas: React.FC = () => {
     return <Group>{arrows}</Group>;
   };
 
+  const renderElementPointLoad = (elementId: number) => {
+    const load = elementPointLoads.find(p => p.elementId === elementId);
+    if (!load || (load.Fx === 0 && load.Fy === 0)) return null;
+
+    const elem = elements.find(e => e.id === elementId);
+    if (!elem) return null;
+
+    const nodeI = getNode(elem.nodeI);
+    const nodeJ = getNode(elem.nodeJ);
+    if (!nodeI || !nodeJ) return null;
+
+    const dx = nodeJ.x - nodeI.x;
+    const dy = nodeJ.y - nodeI.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (length === 0) return null;
+
+    const ratio = Math.max(0, Math.min(1, load.a / length));
+    const wx = nodeI.x + dx * ratio;
+    const wy = nodeI.y + dy * ratio;
+    const pos = toScreen(wx, wy);
+    const forceMagnitude = Math.max(Math.abs(load.Fx), Math.abs(load.Fy));
+    const arrowLength = Math.min(80, forceMagnitude / 10000 * 40 + 40);
+    const isDown = load.Fy < 0;
+    const isLeft = load.Fx < 0;
+
+    return (
+      <Group key={`element-point-load-${elementId}`}>
+        {load.Fy !== 0 && (
+          <Arrow
+            points={isDown ? [pos.x, pos.y - arrowLength, pos.x, pos.y - 5] : [pos.x, pos.y + arrowLength, pos.x, pos.y + 5]}
+            stroke="#7c3aed"
+            strokeWidth={3}
+            pointerLength={10}
+            pointerWidth={8}
+            fill="#7c3aed"
+          />
+        )}
+        {load.Fx !== 0 && (
+          <Arrow
+            points={isLeft ? [pos.x + arrowLength, pos.y, pos.x + 5, pos.y] : [pos.x - arrowLength, pos.y, pos.x - 5, pos.y]}
+            stroke="#6d28d9"
+            strokeWidth={3}
+            pointerLength={10}
+            pointerWidth={8}
+            fill="#6d28d9"
+          />
+        )}
+        <Text
+          x={pos.x + 10}
+          y={pos.y - arrowLength - 18}
+          text={[
+            load.Fx !== 0 ? `Px ${Math.abs(load.Fx / 1000).toFixed(0)} kN` : '',
+            load.Fy !== 0 ? `Py ${Math.abs(load.Fy / 1000).toFixed(0)} kN` : ''
+          ].filter(Boolean).join('\n')}
+          fill="#6d28d9"
+          fontSize={12}
+        />
+      </Group>
+    );
+  };
+
   return (
-    <div ref={containerRef} style={{ width: '100%', height: '100%', minHeight: 'inherit' }}>
+    <div ref={containerRef} className="canvas-shell">
+      <div className="canvas-status">
+        <span>{modeHint}</span>
+        <span>{Math.round(scale)} px/m</span>
+      </div>
+      <div className="viewport-controls" aria-label="Canvas zoom controls">
+        <button type="button" onClick={() => setScale(scale + 10)} title="Zoom in / 放大">+</button>
+        <button type="button" onClick={() => setScale(scale - 10)} title="Zoom out / 縮小">-</button>
+        <button type="button" onClick={resetViewport} title="Reset view / 重設視圖">Reset</button>
+      </div>
       <Stage
         ref={stageRef}
         width={dimensions.width}
         height={dimensions.height}
         onClick={handleStageClick}
         onWheel={handleWheel}
-        style={{ background: '#fafafa' }}
+        onMouseDown={beginPan}
+        onMouseMove={updatePan}
+        onMouseUp={endPan}
+        onMouseLeave={endPan}
+        onTouchStart={beginPan}
+        onTouchMove={updatePan}
+        onTouchEnd={endPan}
+        style={{ background: '#fafafa', cursor: isPanning ? 'grabbing' : mode === 'select' ? 'grab' : 'crosshair' }}
       >
       <Layer>
         {/* Grid */}
@@ -290,6 +449,7 @@ const Canvas: React.FC = () => {
                 hitStrokeWidth={20}
               />
               {renderUDL(elem.id)}
+              {renderElementPointLoad(elem.id)}
             </Group>
           );
         })}

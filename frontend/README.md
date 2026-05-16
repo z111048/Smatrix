@@ -1,73 +1,49 @@
-# React + TypeScript + Vite
+# Smatrix Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript + Vite frontend for the Smatrix structural analysis app.
 
-Currently, two official plugins are available:
+## Main Responsibilities
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Interactive canvas modeling with React-Konva.
+- Node, element, support, material, and load editing.
+- API calls to the FastAPI backend.
+- Result display for displacement, reactions, SFD, BMD, and deflection view.
+- Responsive mobile layout with bottom toolbar, drawer panel, pan, zoom, and reset controls.
 
-## React Compiler
+## Source Layout
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- `src/App.tsx`: top-level layout and responsive side panel.
+- `src/components/Canvas.tsx`: model drawing, selection, pan/zoom, support/load visualization.
+- `src/components/Sidebar.tsx`: node and element property editors.
+- `src/components/AnalysisPanel.tsx`: analyze action, result tabs, result tables.
+- `src/components/ResultsCanvas.tsx`: deflection, shear, and moment overlays.
+- `src/store/index.ts`: Zustand model, load, result, and viewport state.
+- `src/api/index.ts`: `/analyze` and `/health` client helpers.
+- `src/types/index.ts`: shared frontend data types.
 
-## Expanding the ESLint configuration
+## Commands
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
+npm run lint
+npm run build
+npm run preview
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Use `VITE_API_URL` when the backend is not running on `http://localhost:8000`:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+VITE_API_URL=http://localhost:8010 npm run dev
 ```
+
+## Supported Inputs
+
+- Supports: `free`, `pin`, `roller`, `roller_x`, `roller_y`, `fixed`.
+- Nodal loads: `Fx`, `Fy`, `Mz`.
+- Element properties: `E`, `I`, `A`.
+- Element loads: UDL `w`, point load position `a` with `Fx` and `Fy`.
+
+## Notes
+
+The frontend stores values in SI units internally. Several form fields show scaled units for convenience, such as `kN`, `kN.m`, `GPa`, `x10^-6 m4`, and `x10^-4 m2`.

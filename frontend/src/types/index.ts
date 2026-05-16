@@ -30,6 +30,13 @@ export interface UDL {
   w: number;  // Load intensity (N/m), positive upward
 }
 
+export interface ElementPointLoad {
+  elementId: number;
+  a: number;   // Distance from nodeI along element (m)
+  Fx: number;  // Horizontal force (N), positive rightward
+  Fy: number;  // Vertical force (N), positive upward
+}
+
 export interface NodeDisplacement {
   node_id: number;
   u?: number;  // Horizontal displacement (m)
@@ -59,6 +66,6 @@ export interface AnalysisResult {
   internal_forces: ElementInternalForces[];
 }
 
-export type EditorMode = 'select' | 'addNode' | 'addBeam' | 'addPointLoad' | 'addUDL';
+export type EditorMode = 'select' | 'addNode' | 'addBeam' | 'addPointLoad' | 'addUDL' | 'addElementPointLoad';
 
 export type ViewMode = 'structure' | 'deflection' | 'sfd' | 'bmd';

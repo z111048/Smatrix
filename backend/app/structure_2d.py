@@ -151,6 +151,11 @@ class Structure2D:
         """
         if element_id not in self.elements:
             raise ValueError(f"Element {element_id} not found")
+
+        elem = self.elements[element_id]
+        frame_elem = self._create_frame_element(elem)
+        if a < 0 or a > frame_elem.L:
+            raise ValueError(f"Element point load distance must be between 0 and {frame_elem.L}")
         
         if element_id not in self.element_point_loads:
             self.element_point_loads[element_id] = []

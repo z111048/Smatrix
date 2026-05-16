@@ -107,6 +107,15 @@ def analyze_structure(request: AnalysisRequest):
                 wx=0.0,
                 wy=udl.w
             )
+
+        # Add element point loads
+        for load in request.element_point_loads:
+            struct.add_element_point_load(
+                element_id=load.element_id,
+                a=load.a,
+                Fx=load.Fx,
+                Fy=load.Fy
+            )
         
         # Solve
         result = struct.solve()
