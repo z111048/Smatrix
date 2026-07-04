@@ -441,7 +441,7 @@ def test_frame_element():
     print("FrameElement2D Test Suite")
     print("=" * 60)
     
-    # Test 1: Horizontal member (should match BeamElement)
+    # Test 1: Horizontal member benchmark
     print("\nTest 1: Horizontal frame element")
     elem = FrameElement2D(
         E=200e9, A=1e-2, I=1e-4,

@@ -91,7 +91,7 @@ cd frontend && npm run build
 cd backend && uv run pytest
 ```
 
-Current backend test suite: 48 passing tests.
+Current backend test suite: 53 tests.
 
 ## Documentation
 

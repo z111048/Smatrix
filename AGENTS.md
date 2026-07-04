@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Smatrix is split into a FastAPI backend and a Vite React frontend. Backend source lives in `backend/app/`, with structural analysis logic in modules such as `structure.py`, `structure_2d.py`, `beam_element.py`, and `frame_element.py`; API schemas and routes are in `models.py` and `main.py`. Backend tests are in `backend/tests/`. Frontend source is under `frontend/src/`, with React components in `frontend/src/components/`, API helpers in `frontend/src/api/`, shared types in `frontend/src/types/`, and Zustand state in `frontend/src/store/`. Project specs and design notes live in `docs/`.
+Smatrix is split into a FastAPI backend and a Vite React frontend. Backend source lives in `backend/app/`, with structural analysis logic in `structure_2d.py` and `frame_element.py`; API schemas and routes are in `models.py` and `main.py`. Backend tests are in `backend/tests/`. Frontend source is under `frontend/src/`, with React components in `frontend/src/components/`, API helpers in `frontend/src/api/`, shared types in `frontend/src/types/`, and Zustand state in `frontend/src/store/`. Project specs and design notes live in `docs/`.
 
 ## Build, Test, and Development Commands
 
