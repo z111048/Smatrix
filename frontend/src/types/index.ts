@@ -16,6 +16,8 @@ export interface Element {
   E: number;  // Young's modulus (Pa)
   I: number;  // Moment of inertia (m^4)
   A?: number; // Cross-sectional area (m^2)
+  releaseI: boolean; // Moment release at nodeI
+  releaseJ: boolean; // Moment release at nodeJ
 }
 
 export interface PointLoad {

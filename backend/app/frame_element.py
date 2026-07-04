@@ -109,6 +109,15 @@ class FrameElement2D:
         ])
         
         return k
+
+    def released_local_stiffness_matrix(self) -> np.ndarray:
+        """Return the local stiffness matrix after applying element end releases."""
+        k_local = self.local_stiffness_matrix()
+
+        if self.release_i or self.release_j:
+            return self._apply_releases(k_local)
+
+        return k_local
     
     def transformation_matrix(self) -> np.ndarray:
         """
@@ -142,11 +151,7 @@ class FrameElement2D:
         K_global = T^T @ K_local @ T
         """
         T = self.transformation_matrix()
-        k_local = self.local_stiffness_matrix()
-        
-        # Apply releases if any
-        if self.release_i or self.release_j:
-            k_local = self._apply_releases(k_local)
+        k_local = self.released_local_stiffness_matrix()
         
         return T.T @ k_local @ T
     
@@ -349,7 +354,7 @@ class FrameElement2D:
         d_local = T @ d_global
         
         # Local stiffness
-        k_local = self.local_stiffness_matrix()
+        k_local = self.released_local_stiffness_matrix()
         
         # Element forces = K @ d_local + f_fixed
         f_local = k_local @ d_local
@@ -391,7 +396,7 @@ class FrameElement2D:
         d_local = T @ d_global
         
         # Get element end forces in local coordinates
-        k_local = self.local_stiffness_matrix()
+        k_local = self.released_local_stiffness_matrix()
         f_end = k_local @ d_local
         
         # Add fixed-end forces from distributed loads

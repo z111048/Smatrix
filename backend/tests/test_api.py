@@ -188,6 +188,52 @@ class TestAnalyzeEndpoint:
         assert len(data["reactions"]) == 2
         assert len(data["internal_forces"]) == 1
 
+    def test_released_triangle_members_report_no_end_moments(self):
+        """Fully released frame elements should behave as truss members."""
+        request = {
+            "nodes": [
+                {"id": 1, "x": 0, "y": 0, "support": "pin"},
+                {"id": 2, "x": 4, "y": 0, "support": "pin"},
+                {"id": 3, "x": 2, "y": 3, "support": "free"}
+            ],
+            "elements": [
+                {
+                    "id": 1,
+                    "node_i": 1,
+                    "node_j": 3,
+                    "E": 200e9,
+                    "A": 1e-2,
+                    "I": 1e-4,
+                    "release_i": True,
+                    "release_j": True
+                },
+                {
+                    "id": 2,
+                    "node_i": 2,
+                    "node_j": 3,
+                    "E": 200e9,
+                    "A": 1e-2,
+                    "I": 1e-4,
+                    "release_i": True,
+                    "release_j": True
+                }
+            ],
+            "point_loads": [
+                {"node_id": 3, "Fx": 0, "Fy": -10000, "Mz": 0}
+            ],
+            "udls": []
+        }
+
+        response = client.post("/analyze", json=request)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["success"] is True
+
+        for forces in data["internal_forces"]:
+            assert abs(forces["M"][0]) < 1e-6
+            assert abs(forces["M"][-1]) < 1e-6
+
 
 class TestErrorHandling:
     """Tests for error handling"""

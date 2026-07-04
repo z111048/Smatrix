@@ -32,6 +32,8 @@ class ElementInput(BaseModel):
     E: float = Field(default=200e9, description="Young's modulus (Pa)")
     I: float = Field(default=1e-4, description="Moment of inertia (m^4)")
     A: float = Field(default=1e-2, description="Cross-sectional area (m^2)")
+    release_i: bool = Field(default=False, description="Moment release at node_i")
+    release_j: bool = Field(default=False, description="Moment release at node_j")
 
 
 class PointLoadInput(BaseModel):

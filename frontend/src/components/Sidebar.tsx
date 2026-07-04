@@ -261,6 +261,13 @@ const ElementEditor: React.FC<ElementEditorProps> = ({
     });
   };
 
+  const handleTrussMemberChange = (checked: boolean) => {
+    updateElement(element.id, {
+      releaseI: checked,
+      releaseJ: checked
+    });
+  };
+
   const handleAddUdl = () => {
     const w1 = parseValidatedNumber(udlW1);
     const w2 = parseValidatedNumber(udlW2);
@@ -312,6 +319,34 @@ const ElementEditor: React.FC<ElementEditorProps> = ({
         validate={positiveNumber}
         onBlur={handleElementUpdate}
       />
+
+      <h4>Moment Releases / 彎矩釋放</h4>
+      <div className="checkbox-stack">
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={element.releaseI}
+            onChange={(e) => updateElement(element.id, { releaseI: e.target.checked })}
+          />
+          <span>i 端鉸接 Hinge at i</span>
+        </label>
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={element.releaseJ}
+            onChange={(e) => updateElement(element.id, { releaseJ: e.target.checked })}
+          />
+          <span>j 端鉸接 Hinge at j</span>
+        </label>
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={element.releaseI && element.releaseJ}
+            onChange={(e) => handleTrussMemberChange(e.target.checked)}
+          />
+          <span>桁架桿件 Truss member</span>
+        </label>
+      </div>
 
       <h4>UDL / 均佈載重</h4>
       <div className="load-list">
@@ -428,6 +463,8 @@ const Sidebar: React.FC = () => {
       selectedElement.E,
       selectedElement.I,
       selectedElement.A ?? 'none',
+      selectedElement.releaseI,
+      selectedElement.releaseJ,
       selectedElementUdls.map(load => `${load.id}:${load.w1}:${load.w2}`).join('|'),
       selectedElementPointLoads.map(load => `${load.id}:${load.a}:${load.Fx}:${load.Fy}`).join('|')
     ].join('-')

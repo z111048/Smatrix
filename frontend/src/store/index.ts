@@ -137,8 +137,16 @@ const emptyProjectModel = (): ProjectModel => ({
 
 const createModelSnapshot = (model: ProjectModel): ModelSnapshot => ({
   nodes: model.nodes.map(({ id, x, y, support }) => ({ id, x, y, support })),
-  elements: model.elements.map(({ id, nodeI, nodeJ, E, I, A }) => {
-    const element: Element = { id, nodeI, nodeJ, E, I };
+  elements: model.elements.map(({ id, nodeI, nodeJ, E, I, A, releaseI, releaseJ }) => {
+    const element: Element = {
+      id,
+      nodeI,
+      nodeJ,
+      E,
+      I,
+      releaseI: releaseI ?? false,
+      releaseJ: releaseJ ?? false
+    };
     if (A !== undefined) {
       element.A = A;
     }
@@ -234,6 +242,23 @@ const getOptionalId = (
   return { ok: true, value };
 };
 
+const getOptionalBoolean = (
+  record: Record<string, unknown>,
+  key: string,
+  label: string
+): ValidationResult<boolean> => {
+  const value = record[key];
+  if (value === undefined) {
+    return { ok: true, value: false };
+  }
+
+  if (typeof value !== 'boolean') {
+    return { ok: false, error: `${label}.${key} must be a boolean` };
+  }
+
+  return { ok: true, value };
+};
+
 const hasDuplicateIds = (ids: number[]): boolean => ids.length !== new Set(ids).size;
 
 const validateNode = (value: unknown, index: number): ValidationResult<Node> => {
@@ -300,12 +325,20 @@ const validateElement = (value: unknown, index: number): ValidationResult<Elemen
     return { ok: false, error: `${label}.A must be greater than 0` };
   }
 
+  const releaseI = getOptionalBoolean(value, 'releaseI', label);
+  if (!releaseI.ok) return releaseI;
+
+  const releaseJ = getOptionalBoolean(value, 'releaseJ', label);
+  if (!releaseJ.ok) return releaseJ;
+
   const element: Element = {
     id: id.value,
     nodeI: nodeI.value,
     nodeJ: nodeJ.value,
     E: E.value,
-    I: I.value
+    I: I.value,
+    releaseI: releaseI.value,
+    releaseJ: releaseJ.value
   };
 
   if (value.A !== undefined) {
@@ -730,7 +763,16 @@ export const useStore = create<StoreState>((set) => ({
         nextElementId: id + 1,
         elements: [
           ...state.elements,
-          { id, nodeI, nodeJ, E: state.defaultE, I: state.defaultI, A: state.defaultA }
+          {
+            id,
+            nodeI,
+            nodeJ,
+            E: state.defaultE,
+            I: state.defaultI,
+            A: state.defaultA,
+            releaseI: false,
+            releaseJ: false
+          }
         ],
         selectedElementId: id,
         selectedNodeId: null,

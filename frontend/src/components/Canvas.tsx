@@ -9,6 +9,8 @@ import type { Node, Element } from '../types';
 
 const GRID_SIZE = 50;
 const NODE_RADIUS = 8;
+const HINGE_RADIUS = 6;
+const HINGE_OFFSET = NODE_RADIUS + 10;
 
 // Support visualization components
 const SupportPin: React.FC<{ x: number; y: number }> = ({ x, y }) => (
@@ -255,6 +257,58 @@ const Canvas: React.FC = () => {
       default:
         return null;
     }
+  };
+
+  const renderHingeSymbols = (
+    elem: Element,
+    posI: { x: number; y: number },
+    posJ: { x: number; y: number },
+    isSelected: boolean
+  ) => {
+    if (!elem.releaseI && !elem.releaseJ) return null;
+
+    const dx = posJ.x - posI.x;
+    const dy = posJ.y - posI.y;
+    const length = Math.hypot(dx, dy);
+    if (length === 0) return null;
+
+    const unitX = dx / length;
+    const unitY = dy / length;
+    const offset = Math.min(HINGE_OFFSET, length * 0.3);
+    const stroke = isSelected ? '#1d4ed8' : '#111827';
+    const hinges: React.ReactElement[] = [];
+
+    if (elem.releaseI) {
+      hinges.push(
+        <Circle
+          key={`hinge-i-${elem.id}`}
+          x={posI.x + unitX * offset}
+          y={posI.y + unitY * offset}
+          radius={HINGE_RADIUS}
+          stroke={stroke}
+          strokeWidth={2}
+          fill="#fafafa"
+          listening={false}
+        />
+      );
+    }
+
+    if (elem.releaseJ) {
+      hinges.push(
+        <Circle
+          key={`hinge-j-${elem.id}`}
+          x={posJ.x - unitX * offset}
+          y={posJ.y - unitY * offset}
+          radius={HINGE_RADIUS}
+          stroke={stroke}
+          strokeWidth={2}
+          fill="#fafafa"
+          listening={false}
+        />
+      );
+    }
+
+    return hinges;
   };
 
   // Draw point loads
@@ -541,6 +595,7 @@ const Canvas: React.FC = () => {
                 onClick={(e) => handleElementClick(elem, e)}
                 hitStrokeWidth={20}
               />
+              {renderHingeSymbols(elem, posI, posJ, isSelected)}
               {renderUDL(elem.id)}
               {renderElementPointLoad(elem.id)}
             </Group>

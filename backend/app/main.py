@@ -12,6 +12,7 @@ from .models import (
     NodeDisplacement, NodeReaction, ElementInternalForces,
     SupportType as APISupportType
 )
+from .frame_element import ReleaseType
 from .structure_2d import Structure2D, SupportType
 
 
@@ -99,7 +100,9 @@ def analyze_structure(request: AnalysisRequest):
                 node_j_id=elem.node_j,
                 E=elem.E,
                 A=getattr(elem, 'A', 1e-2),
-                I=elem.I
+                I=elem.I,
+                release_i=[ReleaseType.MOMENT] if elem.release_i else None,
+                release_j=[ReleaseType.MOMENT] if elem.release_j else None
             )
         
         # Add point loads
