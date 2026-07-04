@@ -5,7 +5,20 @@ import Toolbar from './components/Toolbar';
 import Sidebar from './components/Sidebar';
 import AnalysisPanel from './components/AnalysisPanel';
 import { useStore } from './store';
+import type { EditorMode } from './types';
 import './App.css';
+
+const GRID_MOVE_STEP = 0.5;
+const FINE_MOVE_STEP = 0.1;
+
+const MODE_HOTKEYS: Record<string, EditorMode> = {
+  v: 'select',
+  n: 'addNode',
+  b: 'addBeam',
+  l: 'addPointLoad',
+  u: 'addUDL',
+  e: 'addElementPointLoad'
+};
 
 const isFormControlTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) return false;
@@ -14,8 +27,36 @@ const isFormControlTarget = (target: EventTarget | null): boolean => {
   return tagName === 'input' || tagName === 'select' || tagName === 'textarea' || target.isContentEditable;
 };
 
+const getArrowDelta = (key: string, step: number): { dx: number; dy: number } | null => {
+  switch (key) {
+    case 'ArrowLeft':
+      return { dx: -step, dy: 0 };
+    case 'ArrowRight':
+      return { dx: step, dy: 0 };
+    case 'ArrowUp':
+      return { dx: 0, dy: step };
+    case 'ArrowDown':
+      return { dx: 0, dy: -step };
+    default:
+      return null;
+  }
+};
+
+const addCoordinateStep = (value: number, delta: number): number => (
+  Number((value + delta).toFixed(10))
+);
+
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(() => window.matchMedia('(min-width: 992px)').matches);
+  const nodes = useStore(state => state.nodes);
+  const selectedNodeId = useStore(state => state.selectedNodeId);
+  const selectedElementId = useStore(state => state.selectedElementId);
+  const moveNode = useStore(state => state.moveNode);
+  const deleteNode = useStore(state => state.deleteNode);
+  const deleteElement = useStore(state => state.deleteElement);
+  const setMode = useStore(state => state.setMode);
+  const setSelectedNode = useStore(state => state.setSelectedNode);
+  const setSelectedElement = useStore(state => state.setSelectedElement);
   const undo = useStore(state => state.undo);
   const redo = useStore(state => state.redo);
 
@@ -29,26 +70,85 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!event.ctrlKey || event.altKey || event.metaKey || isFormControlTarget(event.target)) {
+      if (event.defaultPrevented || isFormControlTarget(event.target)) {
         return;
       }
 
       const key = event.key.toLowerCase();
-      if (key === 'z' && event.shiftKey) {
+
+      if (event.ctrlKey && !event.altKey && !event.metaKey) {
+        if (key === 'z' && event.shiftKey) {
+          event.preventDefault();
+          redo();
+        } else if (key === 'z') {
+          event.preventDefault();
+          undo();
+        } else if (key === 'y') {
+          event.preventDefault();
+          redo();
+        }
+        return;
+      }
+
+      if (event.ctrlKey || event.altKey || event.metaKey) {
+        return;
+      }
+
+      const shortcutMode = MODE_HOTKEYS[key];
+      if (shortcutMode) {
         event.preventDefault();
-        redo();
-      } else if (key === 'z') {
+        setMode(shortcutMode);
+        return;
+      }
+
+      if (event.key === 'Escape') {
         event.preventDefault();
-        undo();
-      } else if (key === 'y') {
+        setMode('select');
+        setSelectedNode(null);
+        setSelectedElement(null);
+        return;
+      }
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
-        redo();
+        if (selectedNodeId !== null) {
+          deleteNode(selectedNodeId);
+        } else if (selectedElementId !== null) {
+          deleteElement(selectedElementId);
+        }
+        return;
+      }
+
+      const step = event.shiftKey ? FINE_MOVE_STEP : GRID_MOVE_STEP;
+      const delta = getArrowDelta(event.key, step);
+      if (delta && selectedNodeId !== null) {
+        const selectedNode = nodes.find(node => node.id === selectedNodeId);
+        if (!selectedNode) return;
+
+        event.preventDefault();
+        moveNode(
+          selectedNode.id,
+          addCoordinateStep(selectedNode.x, delta.dx),
+          addCoordinateStep(selectedNode.y, delta.dy)
+        );
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [redo, undo]);
+  }, [
+    deleteElement,
+    deleteNode,
+    moveNode,
+    nodes,
+    redo,
+    selectedElementId,
+    selectedNodeId,
+    setMode,
+    setSelectedElement,
+    setSelectedNode,
+    undo
+  ]);
 
   return (
     <div className="app">

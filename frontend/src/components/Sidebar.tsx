@@ -1,6 +1,6 @@
 // Properties sidebar component
 
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { useStore } from '../store';
 import type { Element, ElementPointLoad, Node, PointLoad, SupportType, UDL } from '../types';
 
@@ -62,14 +62,17 @@ const ValidatedNumberInput: React.FC<ValidatedNumberInputProps> = ({
   onBlur,
   placeholder
 }) => {
+  const inputId = useId();
   const result = parseValidatedNumber(value, validate);
   const error = result.ok ? null : result.error;
+  const errorId = `${inputId}-error`;
 
   return (
     <div className={`form-row ${error ? 'has-error' : ''}`}>
-      <label>{label}</label>
+      <label htmlFor={inputId}>{label}</label>
       <div className="field-control">
         <input
+          id={inputId}
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -77,8 +80,9 @@ const ValidatedNumberInput: React.FC<ValidatedNumberInputProps> = ({
           placeholder={placeholder}
           inputMode="decimal"
           aria-invalid={error ? 'true' : 'false'}
+          aria-describedby={error ? errorId : undefined}
         />
-        {error && <div className="field-error">{error}</div>}
+        {error && <div id={errorId} className="field-error">{error}</div>}
       </div>
     </div>
   );
@@ -118,6 +122,7 @@ const NodeEditor: React.FC<NodeEditorProps> = ({
   const [loadFx, setLoadFx] = useState(load ? ((load.Fx ?? 0) / 1000).toString() : '0');
   const [loadFy, setLoadFy] = useState(load ? (load.Fy / 1000).toString() : '0');
   const [loadMz, setLoadMz] = useState(load ? (load.Mz / 1000).toString() : '0');
+  const supportSelectId = `node-${node.id}-support`;
 
   const handleNodeUpdate = () => {
     const x = parseValidatedNumber(nodeX);
@@ -168,8 +173,9 @@ const NodeEditor: React.FC<NodeEditorProps> = ({
       />
 
       <div className="form-row">
-        <label>Support:</label>
+        <label htmlFor={supportSelectId}>Support:</label>
         <select
+          id={supportSelectId}
           value={nodeSupport}
           onChange={(e) => {
             const support = e.target.value as SupportType;
@@ -246,6 +252,9 @@ const ElementEditor: React.FC<ElementEditorProps> = ({
   const [pointA, setPointA] = useState('0');
   const [pointFx, setPointFx] = useState('0');
   const [pointFy, setPointFy] = useState('0');
+  const releaseIId = `element-${element.id}-release-i`;
+  const releaseJId = `element-${element.id}-release-j`;
+  const trussMemberId = `element-${element.id}-truss-member`;
 
   const handleElementUpdate = () => {
     const e = parseValidatedNumber(elemE, positiveNumber);
@@ -322,24 +331,27 @@ const ElementEditor: React.FC<ElementEditorProps> = ({
 
       <h4>Moment Releases / 彎矩釋放</h4>
       <div className="checkbox-stack">
-        <label className="checkbox-row">
+        <label className="checkbox-row" htmlFor={releaseIId}>
           <input
+            id={releaseIId}
             type="checkbox"
             checked={element.releaseI}
             onChange={(e) => updateElement(element.id, { releaseI: e.target.checked })}
           />
           <span>i 端鉸接 Hinge at i</span>
         </label>
-        <label className="checkbox-row">
+        <label className="checkbox-row" htmlFor={releaseJId}>
           <input
+            id={releaseJId}
             type="checkbox"
             checked={element.releaseJ}
             onChange={(e) => updateElement(element.id, { releaseJ: e.target.checked })}
           />
           <span>j 端鉸接 Hinge at j</span>
         </label>
-        <label className="checkbox-row">
+        <label className="checkbox-row" htmlFor={trussMemberId}>
           <input
+            id={trussMemberId}
             type="checkbox"
             checked={element.releaseI && element.releaseJ}
             onChange={(e) => handleTrussMemberChange(e.target.checked)}

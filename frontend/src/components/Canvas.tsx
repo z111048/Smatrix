@@ -11,6 +11,12 @@ const GRID_SIZE = 50;
 const NODE_RADIUS = 8;
 const HINGE_RADIUS = 6;
 const HINGE_OFFSET = NODE_RADIUS + 10;
+const CANVAS_ARIA_LABEL = [
+  'Structure canvas.',
+  'Keyboard controls: V Select, N Add Node, B Add Beam, L Point Load, U UDL, E Element Load.',
+  'Arrow keys move the selected node 0.5 meters; Shift plus arrow keys move 0.1 meters.',
+  'Delete or Backspace deletes the selected node or element. Escape clears selection.'
+].join(' ');
 
 // Support visualization components
 const SupportPin: React.FC<{ x: number; y: number }> = ({ x, y }) => (
@@ -54,6 +60,11 @@ const Canvas: React.FC = () => {
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointer, setLastPointer] = useState<{ x: number; y: number } | null>(null);
   const [didPan, setDidPan] = useState(false);
+
+  useEffect(() => {
+    const container = stageRef.current?.container();
+    container?.setAttribute('aria-label', CANVAS_ARIA_LABEL);
+  }, []);
   
   // Responsive canvas sizing
   useEffect(() => {
@@ -154,6 +165,20 @@ const Canvas: React.FC = () => {
     setIsPanning(true);
     setLastPointer(pos);
     setDidPan(false);
+  };
+
+  const focusCanvas = useCallback(() => {
+    stageRef.current?.container().focus({ preventScroll: true });
+  }, []);
+
+  const handleCanvasMouseDown = (e: KonvaEventObject<MouseEvent>) => {
+    focusCanvas();
+    beginPan(e);
+  };
+
+  const handleCanvasTouchStart = (e: KonvaEventObject<TouchEvent>) => {
+    focusCanvas();
+    beginPan(e);
   };
 
   const updatePan = (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -561,13 +586,17 @@ const Canvas: React.FC = () => {
         ref={stageRef}
         width={dimensions.width}
         height={dimensions.height}
+        className="konva-stage"
+        role="application"
+        tabIndex={0}
+        title="Structure canvas keyboard controls"
         onClick={handleStageClick}
         onWheel={handleWheel}
-        onMouseDown={beginPan}
+        onMouseDown={handleCanvasMouseDown}
         onMouseMove={updatePan}
         onMouseUp={endPan}
         onMouseLeave={endPan}
-        onTouchStart={beginPan}
+        onTouchStart={handleCanvasTouchStart}
         onTouchMove={updatePan}
         onTouchEnd={endPan}
         style={{ background: '#fafafa', cursor: isPanning ? 'grabbing' : mode === 'select' ? 'grab' : 'crosshair' }}
