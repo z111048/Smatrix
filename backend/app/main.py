@@ -2,6 +2,8 @@
 FastAPI main application for Smatrix - Structural Matrix Analysis.
 """
 
+import os
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -20,10 +22,19 @@ app = FastAPI(
 )
 
 # CORS configuration
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "SMATRIX_CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify actual origins
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

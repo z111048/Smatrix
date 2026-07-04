@@ -26,11 +26,13 @@ export interface PointLoad {
 }
 
 export interface UDL {
+  id: number;
   elementId: number;
   w: number;  // Load intensity (N/m), positive upward
 }
 
 export interface ElementPointLoad {
+  id: number;
   elementId: number;
   a: number;   // Distance from nodeI along element (m)
   Fx: number;  // Horizontal force (N), positive rightward

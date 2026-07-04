@@ -172,6 +172,21 @@ class Structure2D:
         idx = node_order.index(node_id)
         base = idx * self._ndof_per_node
         return base, base + 1, base + 2  # u, v, θ
+
+    def _get_constrained_dof_indices(self, node_id: int) -> Tuple[int, ...]:
+        """Get constrained global DOF indices for a node's support."""
+        node = self.nodes[node_id]
+        dofs = self._get_node_dof_indices(node_id)
+
+        if node.support == SupportType.FIXED:
+            return dofs
+        if node.support == SupportType.PIN:
+            return dofs[0], dofs[1]
+        if node.support == SupportType.ROLLER_X:
+            return (dofs[1],)
+        if node.support == SupportType.ROLLER_Y:
+            return (dofs[0],)
+        return ()
     
     def _create_frame_element(self, elem: Element2D) -> FrameElement2D:
         """Create a FrameElement2D from element definition."""
@@ -285,25 +300,8 @@ class Structure2D:
         SMALL_STIFFNESS = 1.0  # Small value to prevent singular matrix for released DOFs
         
         for node_id, node in self.nodes.items():
-            dofs = self._get_node_dof_indices(node_id)
-            
-            if node.support == SupportType.FIXED:
-                # Fix u, v, θ
-                for dof in dofs:
-                    K_mod[dof, dof] += PENALTY
-            
-            elif node.support == SupportType.PIN:
-                # Fix u, v
-                K_mod[dofs[0], dofs[0]] += PENALTY
-                K_mod[dofs[1], dofs[1]] += PENALTY
-            
-            elif node.support == SupportType.ROLLER_X:
-                # Fix v only (roller on ground, can move in X)
-                K_mod[dofs[1], dofs[1]] += PENALTY
-            
-            elif node.support == SupportType.ROLLER_Y:
-                # Fix u only (roller on wall, can move in Y)
-                K_mod[dofs[0], dofs[0]] += PENALTY
+            for dof in self._get_constrained_dof_indices(node_id):
+                K_mod[dof, dof] += PENALTY
         
         # Add small stiffness to any DOF with zero diagonal to prevent singularity
         # (This handles released rotational DOFs in truss members)
@@ -350,7 +348,11 @@ class Structure2D:
         for node_id, node in self.nodes.items():
             if node.support != SupportType.NONE:
                 dofs = self._get_node_dof_indices(node_id)
-                self._reactions[node_id] = (R[dofs[0]], R[dofs[1]], R[dofs[2]])
+                constrained_dofs = set(self._get_constrained_dof_indices(node_id))
+                self._reactions[node_id] = tuple(
+                    R[dof] if dof in constrained_dofs else 0.0
+                    for dof in dofs
+                )
         
         self._solved = True
         

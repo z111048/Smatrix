@@ -57,11 +57,11 @@ export async function analyzeStructure(
       node_j: e.nodeJ,
       E: e.E,
       I: e.I,
-      A: e.A || 1e-2
+      A: e.A ?? 1e-2
     })),
     point_loads: pointLoads.map(p => ({
       node_id: p.nodeId,
-      Fx: p.Fx || 0,
+      Fx: p.Fx ?? 0,
       Fy: p.Fy,
       Mz: p.Mz
     })),

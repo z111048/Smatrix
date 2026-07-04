@@ -86,7 +86,7 @@ const Canvas: React.FC = () => {
     scale, offsetX, offsetY,
     beamStartNodeId,
     addNode, setSelectedNode, setSelectedElement,
-    setBeamStartNode, addElement,
+    setBeamStartNode, addElement, moveNode,
     setScale, panViewport, resetViewport
   } = useStore();
 
@@ -190,6 +190,27 @@ const Canvas: React.FC = () => {
     }
   };
 
+  const handleNodeDragStart = (node: Node, e: KonvaEventObject<DragEvent>) => {
+    e.cancelBubble = true;
+    setSelectedNode(node.id);
+  };
+
+  const handleNodeDragEnd = (node: Node, e: KonvaEventObject<DragEvent>) => {
+    e.cancelBubble = true;
+
+    const dragOffset = e.target.position();
+    const nodeScreen = toScreen(node.x, node.y);
+    const world = toWorld(nodeScreen.x + dragOffset.x, nodeScreen.y + dragOffset.y);
+    const snappedX = Math.round(world.x * 2) / 2;
+    const snappedY = Math.round(world.y * 2) / 2;
+
+    e.target.position({ x: 0, y: 0 });
+
+    if (snappedX !== node.x || snappedY !== node.y) {
+      moveNode(node.id, snappedX, snappedY);
+    }
+  };
+
   // Handle element click
   const handleElementClick = (elem: Element, e: KonvaEventObject<MouseEvent>) => {
     e.cancelBubble = true;
@@ -239,13 +260,13 @@ const Canvas: React.FC = () => {
   // Draw point loads
   const renderPointLoad = (nodeId: number) => {
     const load = pointLoads.find(p => p.nodeId === nodeId);
-    if (!load || ((load.Fx || 0) === 0 && load.Fy === 0)) return null;
+    if (!load || ((load.Fx ?? 0) === 0 && load.Fy === 0)) return null;
     
     const node = getNode(nodeId);
     if (!node) return null;
     
     const pos = toScreen(node.x, node.y);
-    const fx = load.Fx || 0;
+    const fx = load.Fx ?? 0;
     const fy = load.Fy;
     const forceMagnitude = Math.max(Math.abs(fx), Math.abs(fy));
     const arrowLength = Math.min(80, forceMagnitude / 10000 * 40 + 40);
@@ -290,8 +311,8 @@ const Canvas: React.FC = () => {
 
   // Draw UDL
   const renderUDL = (elementId: number) => {
-    const udl = udls.find(u => u.elementId === elementId);
-    if (!udl || udl.w === 0) return null;
+    const elementUdls = udls.filter(u => u.elementId === elementId && u.w !== 0);
+    if (elementUdls.length === 0) return null;
     
     const elem = elements.find(e => e.id === elementId);
     if (!elem) return null;
@@ -302,45 +323,50 @@ const Canvas: React.FC = () => {
     
     const posI = toScreen(nodeI.x, nodeI.y);
     const posJ = toScreen(nodeJ.x, nodeJ.y);
-    
-    const arrows = [];
+
+    const loadShapes: React.ReactElement[] = [];
     const numArrows = 8;
-    const isDown = udl.w < 0;
-    const arrowLen = 30;
-    
-    for (let i = 0; i <= numArrows; i++) {
-      const t = i / numArrows;
-      const x = posI.x + (posJ.x - posI.x) * t;
-      const y = posI.y + (posJ.y - posI.y) * t;
-      arrows.push(
-        <Arrow
-          key={`udl-${elementId}-${i}`}
-          points={isDown ? [x, y - arrowLen, x, y - 5] : [x, y + arrowLen, x, y + 5]}
+
+    elementUdls.forEach((udl, loadIndex) => {
+      const isDown = udl.w < 0;
+      const arrowLen = 30 + loadIndex * 12;
+      const lineOffset = isDown ? -arrowLen : arrowLen;
+
+      for (let i = 0; i <= numArrows; i++) {
+        const t = i / numArrows;
+        const x = posI.x + (posJ.x - posI.x) * t;
+        const y = posI.y + (posJ.y - posI.y) * t;
+        loadShapes.push(
+          <Arrow
+            key={`udl-${udl.id}-${i}`}
+            points={isDown ? [x, y - arrowLen, x, y - 5] : [x, y + arrowLen, x, y + 5]}
+            stroke="#f97316"
+            strokeWidth={2}
+            pointerLength={6}
+            pointerWidth={5}
+            fill="#f97316"
+          />
+        );
+      }
+
+      loadShapes.push(
+        <Line
+          key={`udl-line-${udl.id}`}
+          points={[posI.x, posI.y + lineOffset, posJ.x, posJ.y + lineOffset]}
           stroke="#f97316"
           strokeWidth={2}
-          pointerLength={6}
-          pointerWidth={5}
-          fill="#f97316"
         />
       );
-    }
+    });
     
-    // Top line connecting arrows
-    arrows.push(
-      <Line
-        key={`udl-line-${elementId}`}
-        points={[posI.x, posI.y - arrowLen, posJ.x, posJ.y - arrowLen]}
-        stroke="#f97316"
-        strokeWidth={2}
-      />
-    );
-    
-    return <Group>{arrows}</Group>;
+    return <Group>{loadShapes}</Group>;
   };
 
   const renderElementPointLoad = (elementId: number) => {
-    const load = elementPointLoads.find(p => p.elementId === elementId);
-    if (!load || (load.Fx === 0 && load.Fy === 0)) return null;
+    const loads = elementPointLoads.filter(p => (
+      p.elementId === elementId && (p.Fx !== 0 || p.Fy !== 0)
+    ));
+    if (loads.length === 0) return null;
 
     const elem = elements.find(e => e.id === elementId);
     if (!elem) return null;
@@ -354,47 +380,63 @@ const Canvas: React.FC = () => {
     const length = Math.sqrt(dx * dx + dy * dy);
     if (length === 0) return null;
 
-    const ratio = Math.max(0, Math.min(1, load.a / length));
-    const wx = nodeI.x + dx * ratio;
-    const wy = nodeI.y + dy * ratio;
-    const pos = toScreen(wx, wy);
-    const forceMagnitude = Math.max(Math.abs(load.Fx), Math.abs(load.Fy));
-    const arrowLength = Math.min(80, forceMagnitude / 10000 * 40 + 40);
-    const isDown = load.Fy < 0;
-    const isLeft = load.Fx < 0;
-
     return (
-      <Group key={`element-point-load-${elementId}`}>
-        {load.Fy !== 0 && (
-          <Arrow
-            points={isDown ? [pos.x, pos.y - arrowLength, pos.x, pos.y - 5] : [pos.x, pos.y + arrowLength, pos.x, pos.y + 5]}
-            stroke="#7c3aed"
-            strokeWidth={3}
-            pointerLength={10}
-            pointerWidth={8}
-            fill="#7c3aed"
-          />
-        )}
-        {load.Fx !== 0 && (
-          <Arrow
-            points={isLeft ? [pos.x + arrowLength, pos.y, pos.x + 5, pos.y] : [pos.x - arrowLength, pos.y, pos.x - 5, pos.y]}
-            stroke="#6d28d9"
-            strokeWidth={3}
-            pointerLength={10}
-            pointerWidth={8}
-            fill="#6d28d9"
-          />
-        )}
-        <Text
-          x={pos.x + 10}
-          y={pos.y - arrowLength - 18}
-          text={[
-            load.Fx !== 0 ? `Px ${Math.abs(load.Fx / 1000).toFixed(0)} kN` : '',
-            load.Fy !== 0 ? `Py ${Math.abs(load.Fy / 1000).toFixed(0)} kN` : ''
-          ].filter(Boolean).join('\n')}
-          fill="#6d28d9"
-          fontSize={12}
-        />
+      <Group>
+        {loads.map((load, loadIndex) => {
+          const ratio = Math.max(0, Math.min(1, load.a / length));
+          const wx = nodeI.x + dx * ratio;
+          const wy = nodeI.y + dy * ratio;
+          const basePos = toScreen(wx, wy);
+          const posI = toScreen(nodeI.x, nodeI.y);
+          const posJ = toScreen(nodeJ.x, nodeJ.y);
+          const screenDx = posJ.x - posI.x;
+          const screenDy = posJ.y - posI.y;
+          const screenLength = Math.hypot(screenDx, screenDy) || 1;
+          const stackOffset = loadIndex * 10;
+          const pos = {
+            x: basePos.x - (screenDy / screenLength) * stackOffset,
+            y: basePos.y + (screenDx / screenLength) * stackOffset
+          };
+          const forceMagnitude = Math.max(Math.abs(load.Fx), Math.abs(load.Fy));
+          const arrowLength = Math.min(80, forceMagnitude / 10000 * 40 + 40);
+          const isDown = load.Fy < 0;
+          const isLeft = load.Fx < 0;
+
+          return (
+            <Group key={`element-point-load-${load.id}`}>
+              {load.Fy !== 0 && (
+                <Arrow
+                  points={isDown ? [pos.x, pos.y - arrowLength, pos.x, pos.y - 5] : [pos.x, pos.y + arrowLength, pos.x, pos.y + 5]}
+                  stroke="#7c3aed"
+                  strokeWidth={3}
+                  pointerLength={10}
+                  pointerWidth={8}
+                  fill="#7c3aed"
+                />
+              )}
+              {load.Fx !== 0 && (
+                <Arrow
+                  points={isLeft ? [pos.x + arrowLength, pos.y, pos.x + 5, pos.y] : [pos.x - arrowLength, pos.y, pos.x - 5, pos.y]}
+                  stroke="#6d28d9"
+                  strokeWidth={3}
+                  pointerLength={10}
+                  pointerWidth={8}
+                  fill="#6d28d9"
+                />
+              )}
+              <Text
+                x={pos.x + 10}
+                y={pos.y - arrowLength - 18}
+                text={[
+                  load.Fx !== 0 ? `Px ${Math.abs(load.Fx / 1000).toFixed(0)} kN` : '',
+                  load.Fy !== 0 ? `Py ${Math.abs(load.Fy / 1000).toFixed(0)} kN` : ''
+                ].filter(Boolean).join('\n')}
+                fill="#6d28d9"
+                fontSize={12}
+              />
+            </Group>
+          );
+        })}
       </Group>
     );
   };
@@ -480,7 +522,14 @@ const Canvas: React.FC = () => {
           const isBeamStart = beamStartNodeId === node.id;
           
           return (
-            <Group key={`node-${node.id}`}>
+            <Group
+              key={`node-${node.id}`}
+              x={0}
+              y={0}
+              draggable={mode === 'select'}
+              onDragStart={(e) => handleNodeDragStart(node, e)}
+              onDragEnd={(e) => handleNodeDragEnd(node, e)}
+            >
               {/* Support symbol */}
               {renderSupport(node, pos)}
               

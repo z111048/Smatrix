@@ -4,10 +4,20 @@ import ResultsCanvas from './components/ResultsCanvas';
 import Toolbar from './components/Toolbar';
 import Sidebar from './components/Sidebar';
 import AnalysisPanel from './components/AnalysisPanel';
+import { useStore } from './store';
 import './App.css';
+
+const isFormControlTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) return false;
+
+  const tagName = target.tagName.toLowerCase();
+  return tagName === 'input' || tagName === 'select' || tagName === 'textarea' || target.isContentEditable;
+};
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(() => window.matchMedia('(min-width: 992px)').matches);
+  const undo = useStore(state => state.undo);
+  const redo = useStore(state => state.redo);
 
   useEffect(() => {
     const media = window.matchMedia('(min-width: 992px)');
@@ -16,6 +26,29 @@ function App() {
     media.addEventListener('change', handleChange);
     return () => media.removeEventListener('change', handleChange);
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || event.altKey || event.metaKey || isFormControlTarget(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === 'z' && event.shiftKey) {
+        event.preventDefault();
+        redo();
+      } else if (key === 'z') {
+        event.preventDefault();
+        undo();
+      } else if (key === 'y') {
+        event.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [redo, undo]);
 
   return (
     <div className="app">

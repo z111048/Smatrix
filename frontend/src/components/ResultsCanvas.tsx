@@ -4,6 +4,30 @@ import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { Stage, Layer, Line, Circle, Group, Text } from 'react-konva';
 import { useStore } from '../store';
 
+const DIAGRAM_TARGET_ORDINATE_RATIO = 0.15;
+
+const maxFiniteAbs = (values: number[]) => values.reduce((max, value) => (
+  Number.isFinite(value) ? Math.max(max, Math.abs(value)) : max
+), 0);
+
+const formatScaledValue = (value: number, unit: string) => {
+  if (!Number.isFinite(value) || Math.abs(value) < 1e-12) {
+    return `0 ${unit}`;
+  }
+
+  const absValue = Math.abs(value);
+  if (absValue < 0.01) {
+    return `${value.toExponential(2)} ${unit}`;
+  }
+
+  const decimals = absValue >= 100 ? 0 : absValue >= 10 ? 1 : absValue >= 1 ? 2 : 3;
+  return `${value.toFixed(decimals)} ${unit}`;
+};
+
+const formatDisplacement = (value: number) => formatScaledValue(value * 1000, 'mm');
+const formatForce = (value: number) => formatScaledValue(value / 1000, 'kN');
+const formatMoment = (value: number) => formatScaledValue(value / 1000, 'kN·m');
+
 const ResultsCanvas: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 500 });
@@ -55,6 +79,11 @@ const ResultsCanvas: React.FC = () => {
   }
 
   const isCompact = dimensions.width < 480;
+  const isStackedLegend = dimensions.width < 760;
+  const legendMaxLabelX = isStackedLegend ? 0 : 320;
+  const legendMaxLabelY = isStackedLegend ? 26 : 3;
+  const legendMaxTextWidth = Math.max(140, dimensions.width - 40 - legendMaxLabelX);
+  const legendY = dimensions.height - (isStackedLegend ? 68 : 46);
 
   // Get displacement for a node
   const getDisplacement = (nodeId: number) => {
@@ -67,9 +96,47 @@ const ResultsCanvas: React.FC = () => {
     return result.internal_forces.find(f => f.element_id === elemId);
   };
 
+  const getStructureDiagonal = () => {
+    if (nodes.length === 0) {
+      return 0;
+    }
+
+    let minX = nodes[0].x;
+    let maxX = nodes[0].x;
+    let minY = nodes[0].y;
+    let maxY = nodes[0].y;
+
+    nodes.forEach(node => {
+      minX = Math.min(minX, node.x);
+      maxX = Math.max(maxX, node.x);
+      minY = Math.min(minY, node.y);
+      maxY = Math.max(maxY, node.y);
+    });
+
+    return Math.hypot(maxX - minX, maxY - minY);
+  };
+
+  const getAdaptiveScale = (maxValue: number, targetOrdinate: number) => {
+    if (maxValue <= 0 || targetOrdinate <= 0) {
+      return 0;
+    }
+
+    return targetOrdinate / maxValue;
+  };
+
+  const structureDiagonal = getStructureDiagonal();
+  const targetOrdinate = structureDiagonal * DIAGRAM_TARGET_ORDINATE_RATIO;
+  const maxDisplacement = maxFiniteAbs(
+    result.displacements.map(d => Math.hypot(d.u || 0, d.v))
+  );
+  const maxShear = maxFiniteAbs(result.internal_forces.flatMap(forces => forces.V));
+  const maxMoment = maxFiniteAbs(result.internal_forces.flatMap(forces => forces.M));
+  const deflectionScale = getAdaptiveScale(maxDisplacement, targetOrdinate);
+  const forceScale = getAdaptiveScale(maxShear, targetOrdinate);
+  const momentScale = getAdaptiveScale(maxMoment, targetOrdinate);
+
   // Render deflection shape
   const renderDeflection = () => {
-    const deflectionScale = 50; // Amplification factor for visibility
     const curves: React.ReactElement[] = [];
     const originalLines: React.ReactElement[] = [];
     
@@ -156,9 +223,7 @@ const ResultsCanvas: React.FC = () => {
           <Text
             x={pos.x + 10}
             y={pos.y - 20}
-            text={`δ=${Math.sqrt(disp.u**2 + disp.v**2) * 1000 > 0.01 
-              ? (Math.sqrt(disp.u**2 + disp.v**2) * 1000).toFixed(2) + ' mm' 
-              : '0 mm'}`}
+            text={`δ=${formatDisplacement(Math.hypot(disp.u, disp.v))}`}
             fill="#dc2626"
             fontSize={11}
           />
@@ -177,7 +242,6 @@ const ResultsCanvas: React.FC = () => {
 
   // Render SFD (Shear Force Diagram)
   const renderSFD = () => {
-    const forceScale = 0.003; // Scale for force visualization
     const diagrams: React.ReactElement[] = [];
     const structureLines: React.ReactElement[] = [];
     
@@ -224,7 +288,7 @@ const ResultsCanvas: React.FC = () => {
         const wy = nodeI.y + dy * ratio;
         // Offset by shear force in normal direction
         const offset = forces.V[i] * forceScale;
-        const screenPos = toScreen(wx + nx * offset / scale, wy + ny * offset / scale);
+        const screenPos = toScreen(wx + nx * offset, wy + ny * offset);
         points.push(screenPos.x, screenPos.y);
       });
 
@@ -251,14 +315,14 @@ const ResultsCanvas: React.FC = () => {
         const wx = nodeI.x + dx * ratio;
         const wy = nodeI.y + dy * ratio;
         const offset = forces.V[maxIdx] * forceScale;
-        const labelPos = toScreen(wx + nx * offset / scale, wy + ny * offset / scale);
+        const labelPos = toScreen(wx + nx * offset, wy + ny * offset);
         
         diagrams.push(
           <Text
             key={`sfd-label-${elem.id}`}
             x={labelPos.x + 5}
             y={labelPos.y - 15}
-            text={`${(forces.V[maxIdx] / 1000).toFixed(1)} kN`}
+            text={formatForce(forces.V[maxIdx])}
             fill="#1d4ed8"
             fontSize={11}
             fontStyle="bold"
@@ -277,7 +341,6 @@ const ResultsCanvas: React.FC = () => {
 
   // Render BMD (Bending Moment Diagram)
   const renderBMD = () => {
-    const momentScale = 0.0003; // Scale for moment visualization
     const diagrams: React.ReactElement[] = [];
     const structureLines: React.ReactElement[] = [];
     
@@ -326,7 +389,7 @@ const ResultsCanvas: React.FC = () => {
         const wy = nodeI.y + dy * ratio;
         // Offset by moment in negative normal direction (tension side)
         const offset = -forces.M[i] * momentScale;
-        const screenPos = toScreen(wx + nx * offset / scale, wy + ny * offset / scale);
+        const screenPos = toScreen(wx + nx * offset, wy + ny * offset);
         points.push(screenPos.x, screenPos.y);
       });
 
@@ -353,14 +416,14 @@ const ResultsCanvas: React.FC = () => {
         const wx = nodeI.x + dx * ratio;
         const wy = nodeI.y + dy * ratio;
         const offset = -forces.M[maxIdx] * momentScale;
-        const labelPos = toScreen(wx + nx * offset / scale, wy + ny * offset / scale);
+        const labelPos = toScreen(wx + nx * offset, wy + ny * offset);
         
         diagrams.push(
           <Text
             key={`bmd-label-${elem.id}`}
             x={labelPos.x + 5}
             y={labelPos.y + 5}
-            text={`${(Math.abs(forces.M[maxIdx]) / 1000).toFixed(1)} kN·m`}
+            text={formatMoment(Math.abs(forces.M[maxIdx]))}
             fill="#c2410c"
             fontSize={11}
             fontStyle="bold"
@@ -406,25 +469,49 @@ const ResultsCanvas: React.FC = () => {
         {viewMode === 'bmd' && renderBMD()}
 
         {/* Legend */}
-        <Group x={20} y={dimensions.height - 46}>
+        <Group x={20} y={legendY}>
           {viewMode === 'deflection' && (
             <>
               <Line points={[0, 10, 40, 10]} stroke="#9ca3af" strokeWidth={2} dash={[8, 4]} />
               <Text x={50} y={3} text={isCompact ? "Orig." : "Original"} fill="#6b7280" fontSize={12} />
               <Line points={[120, 10, 160, 10]} stroke="#ef4444" strokeWidth={3} />
               <Text x={170} y={3} text={isCompact ? "Defl." : "Deflected"} fill="#6b7280" fontSize={12} />
+              <Text
+                x={legendMaxLabelX}
+                y={legendMaxLabelY}
+                width={legendMaxTextWidth}
+                text={`最大 δ / max δ = ${formatDisplacement(maxDisplacement)}`}
+                fill="#dc2626"
+                fontSize={12}
+              />
             </>
           )}
           {viewMode === 'sfd' && (
             <>
               <Line points={[0, 0, 40, 0, 40, 20, 0, 20]} closed fill="rgba(59, 130, 246, 0.3)" stroke="#2563eb" />
               <Text x={50} y={3} text={isCompact ? "Shear Force" : "Shear Force (+ = clockwise)"} fill="#6b7280" fontSize={12} />
+              <Text
+                x={legendMaxLabelX}
+                y={legendMaxLabelY}
+                width={legendMaxTextWidth}
+                text={`最大 |V| / max |V| = ${formatForce(maxShear)}`}
+                fill="#1d4ed8"
+                fontSize={12}
+              />
             </>
           )}
           {viewMode === 'bmd' && (
             <>
               <Line points={[0, 0, 40, 0, 40, 20, 0, 20]} closed fill="rgba(234, 88, 12, 0.3)" stroke="#ea580c" />
               <Text x={50} y={3} text={isCompact ? "Bending Moment" : "Bending Moment (drawn on tension side)"} fill="#6b7280" fontSize={12} />
+              <Text
+                x={legendMaxLabelX}
+                y={legendMaxLabelY}
+                width={legendMaxTextWidth}
+                text={`最大 |M| / max |M| = ${formatMoment(maxMoment)}`}
+                fill="#c2410c"
+                fontSize={12}
+              />
             </>
           )}
         </Group>

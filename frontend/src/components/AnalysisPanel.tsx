@@ -3,7 +3,53 @@
 import React from 'react';
 import { useStore } from '../store';
 import { analyzeStructure } from '../api';
-import type { ViewMode } from '../types';
+import type { NodeDisplacement, NodeReaction, ViewMode } from '../types';
+
+type ExportRow = Array<string | number>;
+
+const displacementHeaders = ['Node', 'u (mm)', 'v (mm)', 'θ (mrad)'];
+const reactionHeaders = ['Node', 'Fx (kN)', 'Fy (kN)', 'Mz (kN·m)'];
+
+const formatDisplacementRows = (displacements: NodeDisplacement[]): ExportRow[] =>
+  displacements.map(d => [
+    d.node_id,
+    ((d.u ?? 0) * 1000).toFixed(3),
+    (d.v * 1000).toFixed(3),
+    (d.theta * 1000).toFixed(3),
+  ]);
+
+const formatReactionRows = (reactions: NodeReaction[]): ExportRow[] =>
+  reactions.map(r => [
+    r.node_id,
+    ((r.Fx ?? 0) / 1000).toFixed(2),
+    (r.Fy / 1000).toFixed(2),
+    (r.Mz / 1000).toFixed(2),
+  ]);
+
+const buildTsv = (headers: string[], rows: ExportRow[]) =>
+  [headers, ...rows].map(row => row.join('\t')).join('\n');
+
+const escapeCsvCell = (value: string | number) => {
+  const text = String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+const buildCsv = (headers: string[], rows: ExportRow[]) =>
+  [headers, ...rows]
+    .map(row => row.map(escapeCsvCell).join(','))
+    .join('\n');
+
+const downloadCsv = (filename: string, headers: string[], rows: ExportRow[]) => {
+  const blob = new Blob([buildCsv(headers, rows)], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
 
 const AnalysisPanel: React.FC = () => {
   const {
@@ -65,6 +111,17 @@ const AnalysisPanel: React.FC = () => {
     { mode: 'bmd', label: 'Moment (BMD)' },
   ];
 
+  const handleCopyTable = async (headers: string[], rows: ExportRow[]) => {
+    try {
+      await navigator.clipboard.writeText(buildTsv(headers, rows));
+    } catch {
+      setError('複製失敗 / Copy failed');
+    }
+  };
+
+  const displacementRows = result ? formatDisplacementRows(result.displacements) : [];
+  const reactionRows = result ? formatReactionRows(result.reactions) : [];
+
   return (
     <div className="analysis-panel">
       {/* Warning for unsupported nodes */}
@@ -117,23 +174,39 @@ const AnalysisPanel: React.FC = () => {
             <h3>Results</h3>
             
             <div className="result-group">
-              <h4>Displacements</h4>
+              <div className="result-group-header">
+                <h4>Displacements</h4>
+                <div className="result-actions">
+                  <button
+                    type="button"
+                    className="result-action-btn"
+                    onClick={() => void handleCopyTable(displacementHeaders, displacementRows)}
+                  >
+                    複製 Copy
+                  </button>
+                  <button
+                    type="button"
+                    className="result-action-btn"
+                    onClick={() => downloadCsv('smatrix-displacements.csv', displacementHeaders, displacementRows)}
+                  >
+                    匯出 CSV
+                  </button>
+                </div>
+              </div>
               <table>
                 <thead>
                   <tr>
-                    <th>Node</th>
-                    <th>u (mm)</th>
-                    <th>v (mm)</th>
-                    <th>θ (mrad)</th>
+                    {displacementHeaders.map(header => (
+                      <th key={header}>{header}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {result.displacements.map(d => (
-                    <tr key={d.node_id}>
-                      <td>{d.node_id}</td>
-                      <td>{((d.u || 0) * 1000).toFixed(3)}</td>
-                      <td>{(d.v * 1000).toFixed(3)}</td>
-                      <td>{(d.theta * 1000).toFixed(3)}</td>
+                  {displacementRows.map(row => (
+                    <tr key={row[0]}>
+                      {row.map((cell, index) => (
+                        <td key={`${row[0]}-${displacementHeaders[index]}`}>{cell}</td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
@@ -141,23 +214,39 @@ const AnalysisPanel: React.FC = () => {
             </div>
 
             <div className="result-group">
-              <h4>Reactions</h4>
+              <div className="result-group-header">
+                <h4>Reactions</h4>
+                <div className="result-actions">
+                  <button
+                    type="button"
+                    className="result-action-btn"
+                    onClick={() => void handleCopyTable(reactionHeaders, reactionRows)}
+                  >
+                    複製 Copy
+                  </button>
+                  <button
+                    type="button"
+                    className="result-action-btn"
+                    onClick={() => downloadCsv('smatrix-reactions.csv', reactionHeaders, reactionRows)}
+                  >
+                    匯出 CSV
+                  </button>
+                </div>
+              </div>
               <table>
                 <thead>
                   <tr>
-                    <th>Node</th>
-                    <th>Fx (kN)</th>
-                    <th>Fy (kN)</th>
-                    <th>Mz (kN·m)</th>
+                    {reactionHeaders.map(header => (
+                      <th key={header}>{header}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {result.reactions.map(r => (
-                    <tr key={r.node_id}>
-                      <td>{r.node_id}</td>
-                      <td>{((r.Fx || 0) / 1000).toFixed(2)}</td>
-                      <td>{(r.Fy / 1000).toFixed(2)}</td>
-                      <td>{(r.Mz / 1000).toFixed(2)}</td>
+                  {reactionRows.map(row => (
+                    <tr key={row[0]}>
+                      {row.map((cell, index) => (
+                        <td key={`${row[0]}-${reactionHeaders[index]}`}>{cell}</td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>

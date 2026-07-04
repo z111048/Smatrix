@@ -479,6 +479,27 @@ class TestStructure2D:
         
         # Symmetric truss should have equal reactions
         assert abs(R1_y - R2_y) / R1_y < 0.01, "Symmetric reactions expected"
+
+    def test_reactions_zero_unconstrained_support_dofs(self):
+        """Reported reactions should only include constrained support DOFs."""
+        struct = Structure2D()
+
+        struct.add_node(1, 0, 0, SupportType2D.PIN)
+        struct.add_node(2, 3, 0)
+        struct.add_node(3, 6, 0, SupportType2D.ROLLER_X)
+        struct.add_element(1, 1, 2, self.E, self.A, self.I)
+        struct.add_element(2, 2, 3, self.E, self.A, self.I)
+        struct.add_point_load(2, Fy=-100000)
+
+        result = struct.solve()
+
+        pin_reaction = result["reactions"][1]
+        roller_reaction = result["reactions"][3]
+
+        assert pin_reaction[2] == 0.0
+        assert roller_reaction[0] == 0.0
+        assert roller_reaction[2] == 0.0
+        assert abs(pin_reaction[1] + roller_reaction[1] - 100000) < 100
     
     def test_continuous_beam_udl(self):
         """Three-span continuous beam with UDL"""
