@@ -27,7 +27,8 @@ interface AnalysisRequest {
   }>;
   udls: Array<{
     element_id: number;
-    w: number;
+    w1: number;
+    w2: number;
   }>;
   element_point_loads: Array<{
     element_id: number;
@@ -67,7 +68,8 @@ export async function analyzeStructure(
     })),
     udls: udls.map(u => ({
       element_id: u.elementId,
-      w: u.w
+      w1: u.w1,
+      w2: u.w2
     })),
     element_point_loads: elementPointLoads.map(load => ({
       element_id: load.elementId,

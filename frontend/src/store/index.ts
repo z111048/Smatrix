@@ -98,7 +98,7 @@ interface StoreState {
   updatePointLoad: (nodeId: number, updates: Partial<PointLoad>) => void;
   deletePointLoad: (nodeId: number) => void;
   
-  addUDL: (elementId: number, w: number) => void;
+  addUDL: (elementId: number, w1: number, w2?: number) => void;
   updateUDL: (id: number, updates: Partial<UDL>) => void;
   deleteUDL: (id: number) => void;
 
@@ -151,7 +151,7 @@ const createModelSnapshot = (model: ProjectModel): ModelSnapshot => ({
     }
     return load;
   }),
-  udls: model.udls.map(({ id, elementId, w }) => ({ id, elementId, w })),
+  udls: model.udls.map(({ id, elementId, w1, w2 }) => ({ id, elementId, w1, w2 })),
   elementPointLoads: model.elementPointLoads.map(({ id, elementId, a, Fx, Fy }) => ({
     id,
     elementId,
@@ -359,15 +359,30 @@ const validateUDL = (value: unknown, index: number): ValidationResult<ParsedUDL>
   const elementId = getRequiredId(value, 'elementId', label);
   if (!elementId.ok) return elementId;
 
-  const w = getRequiredNumber(value, 'w', label);
-  if (!w.ok) return w;
+  const legacyW = value.w;
+  const hasLegacyW = legacyW !== undefined;
+  if (hasLegacyW && !isFiniteNumber(legacyW)) {
+    return { ok: false, error: `${label}.w must be a finite number` };
+  }
+
+  const w1Value = value.w1 ?? legacyW;
+  const w2Value = value.w2 ?? legacyW;
+
+  if (!isFiniteNumber(w1Value)) {
+    return { ok: false, error: `${label}.w1 must be a finite number` };
+  }
+
+  if (!isFiniteNumber(w2Value)) {
+    return { ok: false, error: `${label}.w2 must be a finite number` };
+  }
 
   return {
     ok: true,
     value: {
       ...(id.value !== undefined ? { id: id.value } : {}),
       elementId: elementId.value,
-      w: w.value
+      w1: w1Value,
+      w2: w2Value
     }
   };
 };
@@ -453,7 +468,8 @@ const materializeLoadIds = (
       udls: udls.map(load => ({
         id: load.id ?? getNextLoadId(),
         elementId: load.elementId,
-        w: load.w
+        w1: load.w1,
+        w2: load.w2
       })),
       elementPointLoads: elementPointLoads.map(load => ({
         id: load.id ?? getNextLoadId(),
@@ -768,12 +784,12 @@ export const useStore = create<StoreState>((set) => ({
   },
   
   // UDL actions
-  addUDL: (elementId: number, w: number) => {
+  addUDL: (elementId: number, w1: number, w2?: number) => {
     set(state => {
       const id = state.nextLoadId;
       return withHistory(state, {
         nextLoadId: id + 1,
-        udls: [...state.udls, { id, elementId, w }]
+        udls: [...state.udls, { id, elementId, w1, w2: w2 ?? w1 }]
       });
     });
   },

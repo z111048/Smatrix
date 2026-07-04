@@ -221,7 +221,7 @@ interface ElementEditorProps {
   elementPointLoads: ElementPointLoad[];
   updateElement: (id: number, updates: Partial<Element>) => void;
   deleteElement: (id: number) => void;
-  addUDL: (elementId: number, w: number) => void;
+  addUDL: (elementId: number, w1: number, w2?: number) => void;
   deleteUDL: (id: number) => void;
   addElementPointLoad: (elementId: number, a: number, Fx: number, Fy: number) => void;
   deleteElementPointLoad: (id: number) => void;
@@ -241,7 +241,8 @@ const ElementEditor: React.FC<ElementEditorProps> = ({
   const [elemE, setElemE] = useState((element.E / 1e9).toString());
   const [elemI, setElemI] = useState((element.I * 1e6).toString());
   const [elemA, setElemA] = useState((((element.A ?? 1e-2) / 1e-4)).toString());
-  const [udlW, setUdlW] = useState('0');
+  const [udlW1, setUdlW1] = useState('0');
+  const [udlW2, setUdlW2] = useState('0');
   const [pointA, setPointA] = useState('0');
   const [pointFx, setPointFx] = useState('0');
   const [pointFy, setPointFy] = useState('0');
@@ -261,11 +262,13 @@ const ElementEditor: React.FC<ElementEditorProps> = ({
   };
 
   const handleAddUdl = () => {
-    const w = parseValidatedNumber(udlW);
-    if (!w.ok) return;
+    const w1 = parseValidatedNumber(udlW1);
+    const w2 = parseValidatedNumber(udlW2);
+    if (!w1.ok || !w2.ok) return;
 
-    addUDL(element.id, w.value * 1000);
-    setUdlW('0');
+    addUDL(element.id, w1.value * 1000, w2.value * 1000);
+    setUdlW1('0');
+    setUdlW2('0');
   };
 
   const handleAddElementPointLoad = () => {
@@ -316,7 +319,10 @@ const ElementEditor: React.FC<ElementEditorProps> = ({
           <p className="load-empty">No UDLs / 尚無均佈載重</p>
         ) : udls.map((load, index) => (
           <div className="load-item" key={load.id}>
-            <span>#{index + 1} w: {formatNumber(load.w / 1000)} kN/m</span>
+            <span>
+              #{index + 1} w1: {formatNumber(load.w1 / 1000)} kN/m,
+              w2: {formatNumber(load.w2 / 1000)} kN/m
+            </span>
             <button type="button" onClick={() => deleteUDL(load.id)}>
               Delete / 刪除
             </button>
@@ -324,9 +330,15 @@ const ElementEditor: React.FC<ElementEditorProps> = ({
         ))}
       </div>
       <ValidatedNumberInput
-        label="w (kN/m):"
-        value={udlW}
-        onChange={setUdlW}
+        label="起點 w1 (kN/m):"
+        value={udlW1}
+        onChange={setUdlW1}
+        placeholder="↓ negative"
+      />
+      <ValidatedNumberInput
+        label="終點 w2 (kN/m):"
+        value={udlW2}
+        onChange={setUdlW2}
         placeholder="↓ negative"
       />
       <button type="button" className="add-load-btn" onClick={handleAddUdl}>
@@ -416,7 +428,7 @@ const Sidebar: React.FC = () => {
       selectedElement.E,
       selectedElement.I,
       selectedElement.A ?? 'none',
-      selectedElementUdls.map(load => `${load.id}:${load.w}`).join('|'),
+      selectedElementUdls.map(load => `${load.id}:${load.w1}:${load.w2}`).join('|'),
       selectedElementPointLoads.map(load => `${load.id}:${load.a}:${load.Fx}:${load.Fy}`).join('|')
     ].join('-')
     : undefined;

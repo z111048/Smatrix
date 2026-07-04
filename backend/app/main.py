@@ -111,12 +111,12 @@ def analyze_structure(request: AnalysisRequest):
                 Mz=load.Mz
             )
         
-        # Add UDLs (as vertical loads in global Y)
+        # Add full-span distributed loads in each element's local y direction
         for udl in request.udls:
-            struct.add_element_udl(
+            struct.add_element_trapezoidal_load(
                 element_id=udl.element_id,
-                wx=0.0,
-                wy=udl.w
+                w1=udl.w1,
+                w2=udl.w2
             )
 
         # Add element point loads

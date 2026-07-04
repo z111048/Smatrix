@@ -28,7 +28,8 @@ export interface PointLoad {
 export interface UDL {
   id: number;
   elementId: number;
-  w: number;  // Load intensity (N/m), positive upward
+  w1: number; // Load intensity at nodeI (N/m), positive in local +y
+  w2: number; // Load intensity at nodeJ (N/m), positive in local +y
 }
 
 export interface ElementPointLoad {

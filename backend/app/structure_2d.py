@@ -53,10 +53,12 @@ class PointLoad:
 
 @dataclass
 class ElementUDL:
-    """Uniformly distributed load on an element"""
+    """Linearly varying distributed load on an element in local coordinates."""
     element_id: int
-    wx: float = 0.0  # Load in global X (N/m)
-    wy: float = 0.0  # Load in global Y (N/m)
+    w1: float = 0.0  # Transverse load at node i in local Y (N/m)
+    w2: float = 0.0  # Transverse load at node j in local Y (N/m)
+    p1: float = 0.0  # Axial load at node i in local X (N/m)
+    p2: float = 0.0  # Axial load at node j in local X (N/m)
 
 
 @dataclass
@@ -83,7 +85,7 @@ class Structure2D:
         self.nodes: Dict[int, Node2D] = {}
         self.elements: Dict[int, Element2D] = {}
         self.point_loads: List[PointLoad] = []
-        self.element_udls: Dict[int, ElementUDL] = {}  # element_id -> UDL
+        self.element_udls: Dict[int, List[ElementUDL]] = {}  # element_id -> loads
         self.element_point_loads: Dict[int, List[ElementPointLoad]] = {}  # element_id -> loads
         
         self._ndof_per_node = 3  # u, v, θ
@@ -135,7 +137,39 @@ class Structure2D:
         """
         if element_id not in self.elements:
             raise ValueError(f"Element {element_id} not found")
-        self.element_udls[element_id] = ElementUDL(element_id=element_id, wx=wx, wy=wy)
+
+        frame_elem = self._create_frame_element(self.elements[element_id])
+        c, s = frame_elem._cos, frame_elem._sin
+        p = c * wx + s * wy   # Axial component in local x
+        w = -s * wx + c * wy  # Transverse component in local y
+
+        self._append_element_distributed_load(
+            ElementUDL(element_id=element_id, w1=w, w2=w, p1=p, p2=p)
+        )
+        self._solved = False
+
+    def add_element_trapezoidal_load(self, element_id: int, w1: float, w2: float):
+        """
+        Add a full-span linearly varying transverse load in local y.
+
+        Args:
+            element_id: Element ID
+            w1: Load intensity at node_i in local y (N/m)
+            w2: Load intensity at node_j in local y (N/m)
+        """
+        if element_id not in self.elements:
+            raise ValueError(f"Element {element_id} not found")
+
+        self._append_element_distributed_load(
+            ElementUDL(element_id=element_id, w1=w1, w2=w2)
+        )
+        self._solved = False
+
+    def _append_element_distributed_load(self, load: ElementUDL):
+        if load.element_id not in self.element_udls:
+            self.element_udls[load.element_id] = []
+
+        self.element_udls[load.element_id].append(load)
         self._solved = False
     
     def add_element_point_load(self, element_id: int, a: float, 
@@ -238,40 +272,37 @@ class Structure2D:
             F[dofs[1]] += load.Fy
             F[dofs[2]] += load.Mz
         
-        # Apply equivalent nodal loads from element UDLs
-        for elem_id, udl in self.element_udls.items():
+        # Apply equivalent nodal loads from element distributed loads
+        for elem_id, udls in self.element_udls.items():
             elem = self.elements[elem_id]
             frame_elem = self._create_frame_element(elem)
-            
-            # Convert global UDL to local
-            c, s = frame_elem._cos, frame_elem._sin
-            w_local_x = c * udl.wx + s * udl.wy  # Axial (along member)
-            w_local_y = -s * udl.wx + c * udl.wy  # Transverse (perpendicular)
-            
-            # Get FEM in local coordinates
-            if abs(w_local_y) > 1e-10:
-                fem_local = frame_elem.fixed_end_forces_udl_local(w_local_y)
-            else:
-                fem_local = np.zeros(6)
-            
-            # For axial distributed load (less common but supported)
-            if abs(w_local_x) > 1e-10:
-                L = frame_elem.L
-                fem_local[0] += w_local_x * L / 2
-                fem_local[3] += w_local_x * L / 2
-            
+
+            fem_local = np.zeros(6)
+            for udl in udls:
+                if abs(udl.w1) > 1e-10 or abs(udl.w2) > 1e-10:
+                    fem_local += frame_elem.fixed_end_forces_trapezoidal_local(udl.w1, udl.w2)
+
+                # For axial distributed load (less common but supported)
+                if abs(udl.p1) > 1e-10 or abs(udl.p2) > 1e-10:
+                    L = frame_elem.L
+                    fem_local[0] += L * (2 * udl.p1 + udl.p2) / 6
+                    fem_local[3] += L * (udl.p1 + 2 * udl.p2) / 6
+
+            if not np.any(fem_local):
+                continue
+
             # Transform to global
             T = frame_elem.transformation_matrix()
             fem_global = T.T @ fem_local
-            
+
             # Add to load vector (negative because FEM are reactions)
             dof_i = self._get_node_dof_indices(elem.node_i_id)
             dof_j = self._get_node_dof_indices(elem.node_j_id)
             dofs = [*dof_i, *dof_j]
-            
+
             for i, dof in enumerate(dofs):
                 F[dof] -= fem_global[i]  # Negative sign for equivalent loads
-        
+
         # Apply equivalent nodal loads from element point loads
         for elem_id, loads in self.element_point_loads.items():
             elem = self.elements[elem_id]
@@ -290,7 +321,7 @@ class Structure2D:
                     F[dof] -= fem_global[i]
         
         return F
-    
+
     def _apply_boundary_conditions(self, K: np.ndarray, F: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Apply boundary conditions using penalty method."""
         K_mod = K.copy()
@@ -381,9 +412,12 @@ class Structure2D:
             self._displacements[dofs[2]]
         )
     
-    def compute_element_forces(self) -> Dict[int, Dict[str, np.ndarray]]:
+    def compute_element_forces(self, n_points: int = 21) -> Dict[int, Dict[str, np.ndarray]]:
         """
         Compute internal forces for all elements.
+
+        Args:
+            n_points: Number of sampling points per element.
         
         Returns:
             Dictionary with element_id -> {stations, N, V, M}
@@ -402,12 +436,13 @@ class Structure2D:
             dofs = [*dof_i, *dof_j]
             d_elem = self._displacements[dofs]
             
-            # Get member loads
-            w = 0
+            # Get member distributed loads
+            w1 = 0.0
+            w2 = 0.0
             if elem_id in self.element_udls:
-                udl = self.element_udls[elem_id]
-                c, s = frame_elem._cos, frame_elem._sin
-                w = -s * udl.wx + c * udl.wy  # Transverse component
+                for udl in self.element_udls[elem_id]:
+                    w1 += udl.w1
+                    w2 += udl.w2
             
             point_loads = []
             if elem_id in self.element_point_loads:
@@ -417,7 +452,11 @@ class Structure2D:
                     point_loads.append((P_local_y, load.a, "y"))
             
             stations, N, V, M = frame_elem.internal_forces(
-                d_elem, w=w, point_loads=point_loads if point_loads else None
+                d_elem,
+                point_loads=point_loads if point_loads else None,
+                n_points=n_points,
+                w1=w1,
+                w2=w2
             )
             
             results[elem_id] = {

@@ -311,7 +311,7 @@ const Canvas: React.FC = () => {
 
   // Draw UDL
   const renderUDL = (elementId: number) => {
-    const elementUdls = udls.filter(u => u.elementId === elementId && u.w !== 0);
+    const elementUdls = udls.filter(u => u.elementId === elementId && (u.w1 !== 0 || u.w2 !== 0));
     if (elementUdls.length === 0) return null;
     
     const elem = elements.find(e => e.id === elementId);
@@ -323,23 +323,53 @@ const Canvas: React.FC = () => {
     
     const posI = toScreen(nodeI.x, nodeI.y);
     const posJ = toScreen(nodeJ.x, nodeJ.y);
+    const screenDx = posJ.x - posI.x;
+    const screenDy = posJ.y - posI.y;
+    const screenLength = Math.hypot(screenDx, screenDy) || 1;
+    const normal = {
+      x: screenDy / screenLength,
+      y: -screenDx / screenLength
+    };
 
     const loadShapes: React.ReactElement[] = [];
     const numArrows = 8;
+    const endGap = 5;
 
     elementUdls.forEach((udl, loadIndex) => {
-      const isDown = udl.w < 0;
-      const arrowLen = 30 + loadIndex * 12;
-      const lineOffset = isDown ? -arrowLen : arrowLen;
+      const maxIntensity = Math.max(Math.abs(udl.w1), Math.abs(udl.w2));
+      if (maxIntensity === 0) return;
+
+      const maxArrowLength = 34 + loadIndex * 12;
+      const boundaryPoints: number[] = [];
 
       for (let i = 0; i <= numArrows; i++) {
         const t = i / numArrows;
         const x = posI.x + (posJ.x - posI.x) * t;
         const y = posI.y + (posJ.y - posI.y) * t;
+        const intensity = udl.w1 + (udl.w2 - udl.w1) * t;
+        const magnitude = Math.abs(intensity);
+        const directionSign = intensity >= 0 ? 1 : -1;
+        const direction = {
+          x: normal.x * directionSign,
+          y: normal.y * directionSign
+        };
+        const arrowLength = magnitude === 0 ? 0 : Math.max(10, (magnitude / maxIntensity) * maxArrowLength);
+        const start = {
+          x: x - direction.x * arrowLength,
+          y: y - direction.y * arrowLength
+        };
+        const end = {
+          x: x - direction.x * endGap,
+          y: y - direction.y * endGap
+        };
+
+        boundaryPoints.push(start.x, start.y);
+        if (magnitude === 0) continue;
+
         loadShapes.push(
           <Arrow
             key={`udl-${udl.id}-${i}`}
-            points={isDown ? [x, y - arrowLen, x, y - 5] : [x, y + arrowLen, x, y + 5]}
+            points={[start.x, start.y, end.x, end.y]}
             stroke="#f97316"
             strokeWidth={2}
             pointerLength={6}
@@ -352,9 +382,30 @@ const Canvas: React.FC = () => {
       loadShapes.push(
         <Line
           key={`udl-line-${udl.id}`}
-          points={[posI.x, posI.y + lineOffset, posJ.x, posJ.y + lineOffset]}
+          points={boundaryPoints}
           stroke="#f97316"
           strokeWidth={2}
+        />
+      );
+      loadShapes.push(
+        <Line
+          key={`udl-side-i-${udl.id}`}
+          points={[posI.x, posI.y, boundaryPoints[0], boundaryPoints[1]]}
+          stroke="#f97316"
+          strokeWidth={1}
+        />
+      );
+      loadShapes.push(
+        <Line
+          key={`udl-side-j-${udl.id}`}
+          points={[
+            posJ.x,
+            posJ.y,
+            boundaryPoints[boundaryPoints.length - 2],
+            boundaryPoints[boundaryPoints.length - 1]
+          ]}
+          stroke="#f97316"
+          strokeWidth={1}
         />
       );
     });

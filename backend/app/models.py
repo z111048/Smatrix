@@ -2,7 +2,7 @@
 Pydantic models for Smatrix API.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional
 from enum import Enum
 
@@ -43,9 +43,34 @@ class PointLoadInput(BaseModel):
 
 
 class UDLInput(BaseModel):
-    """Uniformly distributed load on an element."""
+    """Linearly varying distributed load on an element."""
     element_id: int
-    w: float = Field(description="Load intensity (N/m), positive upward")
+    w: Optional[float] = Field(
+        default=None,
+        description="Legacy uniform load intensity (N/m), positive in local +y"
+    )
+    w1: Optional[float] = Field(
+        default=None,
+        description="Load intensity at node_i (N/m), positive in local +y"
+    )
+    w2: Optional[float] = Field(
+        default=None,
+        description="Load intensity at node_j (N/m), positive in local +y"
+    )
+
+    @model_validator(mode="after")
+    def populate_endpoint_intensities(self):
+        """Accept legacy w by expanding it to w1=w2=w."""
+        if self.w is not None:
+            if self.w1 is None:
+                self.w1 = self.w
+            if self.w2 is None:
+                self.w2 = self.w
+
+        if self.w1 is None or self.w2 is None:
+            raise ValueError("UDL requires w1 and w2, or legacy w")
+
+        return self
 
 
 class ElementPointLoadInput(BaseModel):

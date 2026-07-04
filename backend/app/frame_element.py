@@ -219,13 +219,27 @@ class FrameElement2D:
         Returns:
             [0, V_i, M_i, 0, V_j, M_j] in local coordinates
         """
+        return self.fixed_end_forces_trapezoidal_local(w, w)
+
+    def fixed_end_forces_trapezoidal_local(self, w1: float, w2: float) -> np.ndarray:
+        """
+        Returns consistent fixed-end forces for a linearly varying transverse load.
+
+        Args:
+            w1: Load intensity at node i (N/m), positive in local +y
+            w2: Load intensity at node j (N/m), positive in local +y
+
+        Returns:
+            [0, V_i, M_i, 0, V_j, M_j] in local coordinates
+        """
         L = self._L
-        
-        # Standard fixed-end forces for UDL
-        V = w * L / 2
-        M = w * L**2 / 12
-        
-        return np.array([0, V, M, 0, V, -M])
+
+        V_i = L * (7 * w1 + 3 * w2) / 20
+        V_j = L * (3 * w1 + 7 * w2) / 20
+        M_i = L**2 * (3 * w1 + 2 * w2) / 60
+        M_j = -L**2 * (2 * w1 + 3 * w2) / 60
+
+        return np.array([0, V_i, M_i, 0, V_j, M_j])
     
     def fixed_end_forces_udl_global(self, w: float) -> np.ndarray:
         """
@@ -241,6 +255,22 @@ class FrameElement2D:
         T = self.transformation_matrix()
         
         # Transform to global: f_global = T^T @ f_local
+        return T.T @ f_local
+
+    def fixed_end_forces_trapezoidal_global(self, w1: float, w2: float) -> np.ndarray:
+        """
+        Returns fixed-end forces for a linearly varying transverse load in global coordinates.
+
+        Args:
+            w1: Load intensity at node i (N/m), positive in local +y
+            w2: Load intensity at node j (N/m), positive in local +y
+
+        Returns:
+            6-element vector in global coordinates
+        """
+        f_local = self.fixed_end_forces_trapezoidal_local(w1, w2)
+        T = self.transformation_matrix()
+
         return T.T @ f_local
     
     def fixed_end_forces_point_load_local(self, P: float, a: float, 
@@ -332,15 +362,19 @@ class FrameElement2D:
     def internal_forces(self, d_global: np.ndarray, 
                         w: float = 0, 
                         point_loads: Optional[List[Tuple[float, float, float]]] = None,
-                        n_points: int = 21) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+                        n_points: int = 21,
+                        w1: Optional[float] = None,
+                        w2: Optional[float] = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Calculate internal forces along the element.
         
         Args:
             d_global: Global displacement vector for element [6]
-            w: UDL intensity (N/m), positive in local +y
+            w: Legacy UDL intensity (N/m), positive in local +y
             point_loads: List of (P, a, direction) tuples for point loads
             n_points: Number of sampling points
+            w1: Optional transverse intensity at node i (N/m), positive in local +y
+            w2: Optional transverse intensity at node j (N/m), positive in local +y
             
         Returns:
             stations: x/L values (0 to 1)
@@ -350,6 +384,8 @@ class FrameElement2D:
         """
         L = self._L
         T = self.transformation_matrix()
+        load_w1 = w if w1 is None else w1
+        load_w2 = w if w2 is None else w2
         
         # Transform displacements to local
         d_local = T @ d_global
@@ -358,9 +394,9 @@ class FrameElement2D:
         k_local = self.local_stiffness_matrix()
         f_end = k_local @ d_local
         
-        # Add fixed-end forces from loads
-        if w != 0:
-            f_end += self.fixed_end_forces_udl_local(w)
+        # Add fixed-end forces from distributed loads
+        if load_w1 != 0 or load_w2 != 0:
+            f_end += self.fixed_end_forces_trapezoidal_local(load_w1, load_w2)
         
         if point_loads:
             for P, a, direction in point_loads:
@@ -376,8 +412,9 @@ class FrameElement2D:
         # Internal forces along the beam
         # Sign convention: N positive = tension, V positive = clockwise shear, M positive = hogging
         N = np.full(n_points, N_i)
-        V = V_i + w * x  # V decreases (becomes more negative) with positive w
-        M = M_i + V_i * x + w * x**2 / 2
+        load_gradient = (load_w2 - load_w1) / L
+        V = V_i + load_w1 * x + load_gradient * x**2 / 2
+        M = M_i + V_i * x + load_w1 * x**2 / 2 + load_gradient * x**3 / 6
         
         # Handle point loads if any
         if point_loads:
