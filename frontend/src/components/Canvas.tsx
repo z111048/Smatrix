@@ -6,6 +6,7 @@ import type { Stage as KonvaStage } from 'konva/lib/Stage';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useStore } from '../store';
 import type { Node, Element } from '../types';
+import { toScreenPoint, toWorldPoint } from '../utils/geometry';
 
 const GRID_SIZE = 50;
 const NODE_RADIUS = 8;
@@ -104,16 +105,16 @@ const Canvas: React.FC = () => {
   } = useStore();
 
   // Convert world coordinates to screen
-  const toScreen = useCallback((wx: number, wy: number) => ({
-    x: offsetX + wx * scale,
-    y: offsetY - wy * scale  // Flip Y for engineering convention
-  }), [offsetX, offsetY, scale]);
+  const toScreen = useCallback(
+    (wx: number, wy: number) => toScreenPoint(wx, wy, { offsetX, offsetY, scale }),
+    [offsetX, offsetY, scale]
+  );
 
   // Convert screen coordinates to world
-  const toWorld = useCallback((sx: number, sy: number) => ({
-    x: (sx - offsetX) / scale,
-    y: (offsetY - sy) / scale
-  }), [offsetX, offsetY, scale]);
+  const toWorld = useCallback(
+    (sx: number, sy: number) => toWorldPoint(sx, sy, { offsetX, offsetY, scale }),
+    [offsetX, offsetY, scale]
+  );
 
   const modeHint = (() => {
     if (mode === 'addNode') return 'Add Node / 新增節點：tap canvas';

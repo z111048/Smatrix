@@ -3,12 +3,9 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { Stage, Layer, Line, Circle, Group, Text } from 'react-konva';
 import { useStore } from '../store';
+import { computeResultDiagramScales, toScreenPoint } from '../utils/geometry';
 
 const DIAGRAM_TARGET_ORDINATE_RATIO = 0.15;
-
-const maxFiniteAbs = (values: number[]) => values.reduce((max, value) => (
-  Number.isFinite(value) ? Math.max(max, Math.abs(value)) : max
-), 0);
 
 const formatScaledValue = (value: number, unit: string) => {
   if (!Number.isFinite(value) || Math.abs(value) < 1e-12) {
@@ -69,10 +66,10 @@ const ResultsCanvas: React.FC = () => {
   const getNode = (id: number) => nodes.find(n => n.id === id);
 
   // Convert world coordinates to screen
-  const toScreen = useCallback((wx: number, wy: number) => ({
-    x: offsetX + wx * scale,
-    y: offsetY - wy * scale
-  }), [offsetX, offsetY, scale]);
+  const toScreen = useCallback(
+    (wx: number, wy: number) => toScreenPoint(wx, wy, { offsetX, offsetY, scale }),
+    [offsetX, offsetY, scale]
+  );
 
   if (!result || viewMode === 'structure') {
     return <div ref={containerRef} style={{ display: 'none' }} />;
@@ -96,44 +93,14 @@ const ResultsCanvas: React.FC = () => {
     return result.internal_forces.find(f => f.element_id === elemId);
   };
 
-  const getStructureDiagonal = () => {
-    if (nodes.length === 0) {
-      return 0;
-    }
-
-    let minX = nodes[0].x;
-    let maxX = nodes[0].x;
-    let minY = nodes[0].y;
-    let maxY = nodes[0].y;
-
-    nodes.forEach(node => {
-      minX = Math.min(minX, node.x);
-      maxX = Math.max(maxX, node.x);
-      minY = Math.min(minY, node.y);
-      maxY = Math.max(maxY, node.y);
-    });
-
-    return Math.hypot(maxX - minX, maxY - minY);
-  };
-
-  const getAdaptiveScale = (maxValue: number, targetOrdinate: number) => {
-    if (maxValue <= 0 || targetOrdinate <= 0) {
-      return 0;
-    }
-
-    return targetOrdinate / maxValue;
-  };
-
-  const structureDiagonal = getStructureDiagonal();
-  const targetOrdinate = structureDiagonal * DIAGRAM_TARGET_ORDINATE_RATIO;
-  const maxDisplacement = maxFiniteAbs(
-    result.displacements.map(d => Math.hypot(d.u || 0, d.v))
-  );
-  const maxShear = maxFiniteAbs(result.internal_forces.flatMap(forces => forces.V));
-  const maxMoment = maxFiniteAbs(result.internal_forces.flatMap(forces => forces.M));
-  const deflectionScale = getAdaptiveScale(maxDisplacement, targetOrdinate);
-  const forceScale = getAdaptiveScale(maxShear, targetOrdinate);
-  const momentScale = getAdaptiveScale(maxMoment, targetOrdinate);
+  const {
+    maxDisplacement,
+    maxShear,
+    maxMoment,
+    deflectionScale,
+    forceScale,
+    momentScale
+  } = computeResultDiagramScales(nodes, result, DIAGRAM_TARGET_ORDINATE_RATIO);
 
   // Render deflection shape
   const renderDeflection = () => {
